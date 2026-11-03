@@ -364,15 +364,16 @@
         animateIn($$('.gem-card', rail));
       });
       dragScroll(rail);
+      // A real photo saved as assets/gem-mine.jpg replaces the illustration automatically.
+      var minePhoto = new Image();
+      minePhoto.onload = function () {
+        var slot = $('[data-mine-photo]');
+        slot.src = minePhoto.src;
+        slot.classList.remove('hidden');
+        $('[data-mine-caption]').textContent = 'A gem mine in Sri Lanka.';
+      };
+      minePhoto.src = 'assets/gem-mine.jpg';
       if (gsap && !reduce && window.ScrollTrigger) {
-        var gl = $('.gl');
-        if (gl) {
-          var len = gl.getTotalLength();
-          gsap.set(gl, { strokeDasharray: len, strokeDashoffset: len });
-          gsap.set('.gf', { opacity: 0 });
-          var tl = gsap.timeline({ scrollTrigger: { trigger: '.gem-draw', start: 'top 80%', once: true } });
-          tl.to(gl, { strokeDashoffset: 0, duration: 2.4, ease: 'power1.inOut' }).to('.gf', { opacity: 1, duration: 1 }, 1.4);
-        }
         var y = $('#years');
         if (y) {
           var o = { n: 0 };
