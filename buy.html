@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Buy now | Yasiru Gems</title>
+<meta name="description" content="Select a gem and chat with Yasiru Gems on WhatsApp to buy it.">
+<meta property="og:title" content="Buy now | Yasiru Gems">
+<meta property="og:description" content="Select a gem and chat with Yasiru Gems on WhatsApp to buy it.">
+<meta property="og:type" content="website">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b6b4a">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/bodoni-moda-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-page="buy">
+<main>
+<section class="hero hero-short" data-hero="buy">
+  <div class="hero-media" aria-hidden="true"></div>
+  <div class="hero-copy wrap">
+    <h1 class="split">Buy now</h1>
+    <p class="lead reveal-hero">Select your gem, then chat with us on WhatsApp.</p>
+  </div>
+</section>
+<section class="section wrap buy">
+  <div class="buy-pick">
+    <div class="buy-head">
+      <h2>Select a gem</h2>
+      <label class="search"><span class="sr">Search gems</span><input type="search" id="bq" placeholder="Search gems"></label>
+    </div>
+    <div class="pick-grid" id="pick" role="radiogroup" aria-label="Select a gem"></div>
+  </div>
+  <aside class="buy-panel" id="panel" aria-live="polite">
+    <h2>Your gem</h2>
+    <div id="tag" class="tag-empty">No gem selected yet</div>
+    <a class="btn btn-wa is-off" id="chat" href="#" aria-disabled="true">Chat with us</a>
+    <p class="hint" id="hint">Select a gem to continue.</p>
+  </aside>
+</section>
+</main>
+<script src="pryme.js"></script>
+<script src="assets/js/gsap.min.js"></script>
+<script src="assets/js/ScrollTrigger.min.js"></script>
+<script src="assets/js/site.js"></script>
+</body>
+</html>

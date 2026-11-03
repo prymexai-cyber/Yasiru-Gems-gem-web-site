@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Our Gems | Yasiru Gems</title>
+<meta name="description" content="Browse genuine gemstones from Yasiru Gems. See photos and details of each stone, then chat with us on WhatsApp.">
+<meta property="og:title" content="Our Gems | Yasiru Gems">
+<meta property="og:description" content="Browse genuine gemstones from Yasiru Gems. See photos and details of each stone, then chat with us on WhatsApp.">
+<meta property="og:type" content="website">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b6b4a">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/bodoni-moda-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-page="gems">
+<main>
+<section class="hero" data-hero="gems">
+  <div class="hero-media" aria-hidden="true"></div>
+  <div class="hero-copy wrap">
+    <h1 class="split">Our Gems</h1>
+    <p class="lead reveal-hero">Genuine, quality stones at low prices. Open any gem to see its photos and details.</p>
+  </div>
+</section>
+<section class="section wrap catalog">
+  <div class="filters glass-bar">
+    <label class="search"><span class="sr">Search gems</span><input type="search" id="q" placeholder="Search gems"></label>
+    <div class="chips" id="types" role="group" aria-label="Gem type"></div>
+    <label class="sort"><span class="sr">Sort</span><select id="sort">
+      <option value="new">Newest first</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option><option value="carat">Largest carat</option>
+    </select></label>
+  </div>
+  <p class="count" id="count" aria-live="polite"></p>
+  <div class="gem-grid" id="grid"></div>
+</section>
+<section class="closing wrap">
+  <div class="closing-card rise" data-bgvideo="gemsband">
+    <h2>Looking for a particular stone?</h2>
+    <p>Tell us what you need on WhatsApp.</p>
+    <a class="btn btn-white" data-wa="Hello Yasiru Gems, I am looking for a particular stone." href="#">Chat with us</a>
+  </div>
+</section>
+</main>
+<script src="pryme.js"></script>
+<script src="assets/js/gsap.min.js"></script>
+<script src="assets/js/ScrollTrigger.min.js"></script>
+<script src="assets/js/site.js"></script>
+</body>
+</html>

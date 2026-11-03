@@ -1,0 +1,1 @@
+window.PRYME = { api: "", key: "" };
