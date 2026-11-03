@@ -33,9 +33,9 @@
   </div></div>
   <form class="glass-card msg rise" id="msg">
     <h2>Send a message</h2>
-    <p class="hint">Your message goes straight to us. We will reply on the number you give.</p>
+    <p class="hint">Your message goes straight to us. We will reply on your WhatsApp.</p>
     <label>Your name<input name="name" required maxlength="80" autocomplete="name"></label>
-    <label>Your WhatsApp or phone number<input name="contact" required maxlength="40" inputmode="tel" autocomplete="tel"></label>
+    <label>Your WhatsApp number<input name="contact" required maxlength="24" inputmode="tel" autocomplete="tel" placeholder="+94 77 123 4567" pattern="[+0-9 ()\-]{7,24}" title="Enter your WhatsApp number with the country code"></label>
     <label class="trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
     <label>Your message<textarea name="text" rows="5" required maxlength="2000"></textarea></label>
     <button class="btn btn-solid" id="send">Send message</button>
