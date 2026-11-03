@@ -56,12 +56,19 @@
 
   /* ---------- shared layout ---------- */
   function layout() {
+    if (cfg.api) {
+      var pc = document.createElement('link');
+      pc.rel = 'preconnect';
+      pc.href = cfg.api;
+      pc.crossOrigin = 'anonymous';
+      document.head.append(pc);
+    }
     var bg = document.createElement('div');
     bg.className = 'aurora';
     bg.innerHTML = '<i></i><i></i><i></i>';
     document.body.prepend(bg);
 
-    var links = [['index.html', 'Home', 'home'], ['about.html', 'About us', 'about'], ['gems.html', 'Our Gems', 'gems'], ['contact.html', 'Contact us', 'contact']];
+    var links = [['index.html', 'Home', 'home'], ['about.html', 'About us', 'about'], ['gems.html', 'Our Gems', 'gems'], ['nature.html', 'Our Nature', 'nature'], ['events.html', 'Gem Events', 'events'], ['contact.html', 'Contact us', 'contact']];
     var header = document.createElement('header');
     header.className = 'top';
     header.innerHTML =
@@ -77,7 +84,7 @@
       nav.classList.toggle('open', open);
       btn.setAttribute('aria-expanded', String(open));
       btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      if (open) header.classList.add('solid'); else updateHeader();
+      updateHeader();
     }
     btn.addEventListener('click', function () { setMenu(!nav.classList.contains('open')); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setMenu(false); });
@@ -87,8 +94,7 @@
     function updateHeader() {
       var dark = hero && hero.getBoundingClientRect().bottom > 70;
       if (nav.classList.contains('open')) return;
-      header.classList.toggle('solid', !dark);
-      document.body.classList.toggle('in-hero', !!dark);
+            document.body.classList.toggle('in-hero', !!dark);
     }
     addEventListener('scroll', updateHeader, { passive: true });
     updateHeader();
@@ -97,8 +103,8 @@
     foot.className = 'foot';
     foot.innerHTML =
       '<div class="wrap"><div class="foot-grid"><div><a class="brand" href="index.html">' + LOGO + 'Yasiru Gems</a>' +
-      '<p>Genuine, quality gemstones at low prices. NGJA registered, with more than 25 years of experience.</p><p class="foot-ngja"><img class="ngja-logo hidden" data-ngja-logo alt="NGJA logo"><span>Gem dealer: U. L. D. R. P GUNASINGHE<br>NGJA licence number: <span data-ngja-no>234533</span></span></p></div>' +
-      '<div><h2>Pages</h2><ul><li><a href="index.html">Home</a></li><li><a href="about.html">About us</a></li><li><a href="gems.html">Our Gems</a></li><li><a href="contact.html">Contact us</a></li><li><a href="buy.html">Buy now</a></li></ul></div>' +
+      '<p>Genuine, quality gemstones at low prices. NGJA registered, with more than 25 years of experience.</p><p class="foot-ngja"><img class="ngja-logo" src="assets/ngja-logo.png" alt="National Gem &amp; Jewellery Authority logo" width="46" height="46" loading="lazy"><span>Gem dealer: U. L. D. R. P GUNASINGHE<br>NGJA licence number: <span data-ngja-no>234533</span></span></p></div>' +
+      '<div><h2>Pages</h2><ul><li><a href="index.html">Home</a></li><li><a href="about.html">About us</a></li><li><a href="gems.html">Our Gems</a></li><li><a href="nature.html">Our Nature</a></li><li><a href="events.html">Gem Events</a></li><li><a href="contact.html">Contact us</a></li><li><a href="buy.html">Buy now</a></li></ul></div>' +
       '<div><h2>WhatsApp</h2><ul><li><a data-phone href="#">+1 (402) 808-7890</a></li></ul></div></div>' +
       '<p class="copy">&copy; ' + new Date().getFullYear() + ' Yasiru Gems</p></div>';
     document.body.append(foot);
@@ -111,16 +117,12 @@
     wa.innerHTML = WA_ICON;
     document.body.append(wa);
 
-    // Real refraction is only reliable in Chromium; other browsers keep the blurred glass.
-    if (window.chrome && !reduce && matchMedia('(min-width: 700px)').matches) {
-      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width', '0');
-      svg.setAttribute('height', '0');
-      svg.setAttribute('aria-hidden', 'true');
-      svg.style.position = 'absolute';
-      svg.innerHTML = '<filter id="liquid" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.009 0.014" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="46" xChannelSelector="R" yChannelSelector="G"/></filter>';
-      document.body.append(svg);
-      document.documentElement.classList.add('lq');
+    // Opens the next page faster by fetching it when a link is about to be used.
+    if (HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')) {
+      var rules = document.createElement('script');
+      rules.type = 'speculationrules';
+      rules.textContent = JSON.stringify({ prefetch: [{ where: { href_matches: '/*' }, eagerness: 'moderate' }] });
+      document.head.append(rules);
     }
     wireWa();
   }
@@ -128,8 +130,9 @@
   /* ---------- hero video ---------- */
   // Each clip tries a phone/desktop size, then the Netlify relay in _redirects if the direct link is refused.
   function pixabay(base) {
+    // The video sits behind glass, so smaller files look the same and load much faster.
     var phone = matchMedia('(max-width: 700px)').matches;
-    var order = phone ? ['small', 'medium', 'large'] : ['medium', 'large'];
+    var order = phone ? ['tiny', 'small', 'medium', 'large'] : ['small', 'medium', 'large'];
     var list = order.map(function (s) { return base + '_' + s + '.mp4'; });
     list.push(base.replace('https://cdn.pixabay.com/video/', 'pv/') + '_large.mp4');
     return list;
@@ -147,6 +150,8 @@
     island: [pixabay(PB + '2024/10/11/235859')],
     contactcard: [pixabay(PB + '2025/08/22/299021')],
     gemsband: [pixabay(PB + '2024/12/13/246461')],
+    nature: [pixabay(PB + '2025/12/17/322546')],
+    events: [pixabay(PB + '2025/04/16/272321')],
   };
   function sourcesFor(name, i, list) {
     // A file saved in assets/video always wins, so no code edit is needed to use your own clip.
@@ -178,23 +183,11 @@
             if (e.isIntersecting) v.play().catch(function () {}); else v.pause();
           }
         });
-      }, { rootMargin: '300px' });
+      }, { rootMargin: '150px' });
       io.observe(band);
     });
   }
   var heroKey = null;
-
-  // Shows the official NGJA logo as soon as assets/ngja-logo.png is in the website folder.
-  function ngjaLogo() {
-    var slots = $$('[data-ngja-logo]');
-    if (!slots.length) return;
-    var probe = new Image();
-    probe.onload = function () {
-      slots.forEach(function (n) { if (!n.getAttribute('src')) { n.src = probe.src; n.classList.remove('hidden'); } });
-      $$('.cred-seal').forEach(function (n) { n.classList.add('hidden'); });
-    };
-    probe.src = 'assets/ngja-logo.png';
-  }
 
   function playHero(override) {
     var hero = $('[data-hero]');
@@ -219,13 +212,13 @@
       v.setAttribute('playsinline', '');
       v.setAttribute('muted', '');
       v.loop = true;
-      v.preload = 'auto';
+      v.preload = 'none';
       var i = 0;
       v.addEventListener('error', function () {
         i++;
         if (i < sources.length) { v.src = sources[i]; v.load(); if (v.dataset.active) v.play().catch(function () {}); }
       });
-      v.src = sources[0];
+      v.dataset.first = sources[0];
       box.append(v);
       return v;
     });
@@ -236,6 +229,7 @@
       videos.forEach(function (v, k) {
         if (k === n) {
           v.dataset.active = '1';
+          if (!v.getAttribute('src')) v.src = v.dataset.first;
           var p = v.play();
           if (p) p.catch(function () {});
           v.addEventListener('playing', function once() { v.classList.add('on'); v.removeEventListener('playing', once); });
@@ -247,7 +241,8 @@
         }
       });
     }
-    show(0);
+    // The page and its text appear first. The video follows a moment later.
+    setTimeout(function () { show(0); }, 120);
     if (videos.length > 1) setInterval(function () {
       if (document.hidden) return;
       index = (index + 1) % videos.length;
@@ -309,7 +304,7 @@
   function cardHtml(p) {
     var img = p.images[0];
     return '<article class="gem-card' + (p.sold ? ' is-sold' : '') + '"><a class="gem-link" href="' + esc(gemUrl(p)) + '">' +
-      '<div class="gem-pic">' + (img ? '<img src="' + esc(img.thumb) + '" alt="' + esc(p.name) + '" loading="lazy" draggable="false"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') + (p.sold ? soldBand() : '') + '</div>' +
+      '<div class="gem-pic">' + (img ? '<img src="' + esc(img.thumb) + '" alt="' + esc(p.name) + '" loading="lazy" decoding="async" draggable="false"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') + (p.sold ? soldBand() : '') + '</div>' +
       '<div class="gem-info"><h3>' + esc(p.name) + '</h3><div class="gem-meta">' + esc(metaLine(p)) + '</div><div class="gem-price">' + (p.sold ? 'Sold out' : esc(formatPrice(p))) + '</div></div></a>' +
       '<div class="gem-foot">' + (p.sold
         ? '<a class="card-wa off" target="_blank" rel="noopener" href="' + esc(waLink('Hello Yasiru Gems, ' + p.name + ' is sold out. Do you have a similar stone?')) + '">Ask for a similar stone</a>'
@@ -319,7 +314,29 @@
   function animateIn(nodes) {
     wireGlass(nodes);
     if (!gsap || reduce || !nodes.length) return;
-    gsap.from(nodes, { y: 34, opacity: 0, duration: .8, stagger: .06, ease: 'power3.out', clearProps: 'transform,opacity' });
+    gsap.from(nodes, { y: 16, opacity: 0, duration: .45, stagger: .03, ease: 'power2.out', clearProps: 'transform,opacity' });
+  }
+
+  /* ---------- events ---------- */
+  var PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s7-7.200 7-12a7 7 0 1 0-14 0c0 4.800 7 12 7 12z"/><circle cx="12" cy="10" r="2.500"/></svg>';
+  function parseDay(d) { var p = String(d).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function dayText(d) { return parseDay(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  function eventDates(e) { return e.endDate && e.endDate !== e.startDate ? dayText(e.startDate) + ' to ' + dayText(e.endDate) : dayText(e.startDate); }
+  function todayKey() { var n = new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0'); }
+  function splitEvents(list) {
+    var today = todayKey();
+    var isPast = function (e) { return (e.endDate || e.startDate) < today; };
+    return {
+      upcoming: list.filter(function (e) { return !isPast(e); }),
+      past: list.filter(isPast).reverse(),
+    };
+  }
+  function eventCard(e) {
+    return '<article class="event-card"><div class="event-pic">' + (e.image ? '<img src="' + esc(e.image.full) + '" alt="' + esc(e.title) + '" loading="lazy" decoding="async">' : '') + '<span class="event-date">' + esc(eventDates(e)) + '</span></div>' +
+      '<div class="event-body"><h3>' + esc(e.title) + '</h3>' +
+      (e.location ? '<div class="event-place">' + PIN + (e.mapUrl ? '<a href="' + esc(e.mapUrl) + '" target="_blank" rel="noopener">' + esc(e.location) + '</a>' : '<span>' + esc(e.location) + '</span>') + '</div>' : '') +
+      (e.time ? '<div class="event-place"><span>' + esc(e.time) + '</span></div>' : '') +
+      (e.description ? '<p class="event-desc">' + esc(e.description) + '</p>' : '') + '</div></article>';
   }
 
   /* ---------- pages ---------- */
@@ -338,6 +355,11 @@
         if (html === last) return;
         last = html;
         rail.innerHTML = html;
+        var upcoming = splitEvents((data && data.events) || []).upcoming.slice(0, 3);
+        if (upcoming.length) {
+          $('#homeEventGrid').innerHTML = upcoming.map(eventCard).join('');
+          $('#homeEvents').classList.remove('hidden');
+        }
         wireWa();
         animateIn($$('.gem-card', rail));
       });
@@ -368,6 +390,24 @@
     },
 
     about: function () { catalog(function (d) { applySite(d); }); },
+    nature: function () { catalog(function (d) { applySite(d); }); },
+    events: function () {
+      var up = $('#upcoming'), past = $('#past'), box = $('#pastBox');
+      up.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+      catalog(function (data, final) {
+        applySite(data);
+        if (!data) {
+          if (final) { up.innerHTML = noteHtml('Events could not load', 'Check your connection and refresh, or ask us on WhatsApp.'); wireWa(); }
+          return;
+        }
+        var parts = splitEvents(data.events || []);
+        up.innerHTML = parts.upcoming.length ? parts.upcoming.map(eventCard).join('') : (final ? noteHtml('No upcoming events right now', 'Chat with us to find out where you can meet us next.') : up.innerHTML);
+        box.classList.toggle('hidden', !parts.past.length);
+        past.innerHTML = parts.past.map(eventCard).join('');
+        wireWa();
+        wireGlass($$('.event-card'));
+      });
+    },
     contact: function () {
       catalog(function (d) { applySite(d); });
       $('#msg').addEventListener('submit', function (e) {
@@ -567,7 +607,7 @@
     box.style.display = '';
     box.innerHTML =
       '<div class="gallery"><button type="button" class="stage" id="stage" aria-label="Open photo to zoom">' +
-      (first ? '<img id="mainImg" src="' + esc(first.full) + '" alt="' + esc(p.name) + '"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') +
+      (first ? '<img id="mainImg" src="' + esc(first.thumb) + '" alt="' + esc(p.name) + '"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') +
       (p.sold ? soldBand(true) : '') + '<span class="zoom-hint">Tap to zoom</span><span class="lens" id="lens"></span></button>' +
       (imgs.length > 1 ? '<div class="thumbs">' + imgs.map(function (im, i) {
         return '<button type="button" class="thumb" data-i="' + i + '" aria-label="Photo ' + (i + 1) + ' of ' + imgs.length + '" aria-current="' + (i === 0) + '"><img src="' + esc(im.thumb) + '" alt=""></button>';
@@ -582,10 +622,18 @@
       '<p class="d-trust">NGJA registered gem dealer: U. L. D. R. P GUNASINGHE. Licence number <span data-ngja-no>' + esc(ngjaNo) + '</span>. More than 25 years of experience.</p></div>';
 
     var current = 0, main = $('#mainImg'), stage = $('#stage'), lens = $('#lens');
+    // Show the small photo at once, then swap in the sharp one when it has loaded.
+    function showPhoto(i) {
+      main.src = imgs[i].thumb;
+      var sharp = new Image();
+      sharp.onload = function () { if (current === i) main.src = sharp.src; };
+      sharp.src = imgs[i].full;
+    }
+    if (first) showPhoto(0);
     $$('.thumb', box).forEach(function (t) {
       t.addEventListener('click', function () {
         current = +t.dataset.i;
-        main.src = imgs[current].full;
+        showPhoto(current);
         $$('.thumb', box).forEach(function (o) { o.setAttribute('aria-current', String(o === t)); });
       });
     });
@@ -613,7 +661,7 @@
       }
     }
     wireGlass($$('[data-glass]', box));
-    if (gsap && !reduce) gsap.from(box.children, { y: 30, opacity: 0, duration: .9, stagger: .12, ease: 'power3.out', clearProps: 'transform,opacity' });
+    if (gsap && !reduce) gsap.from(box.children, { y: 14, opacity: 0, duration: .4, stagger: .06, ease: 'power2.out', clearProps: 'transform,opacity' });
   }
 
   /* full-screen viewer: wheel, pinch, drag, double-tap */
@@ -769,64 +817,26 @@
     gsap.registerPlugin(window.ScrollTrigger);
     var h = $('.split');
     if (h) {
-      var tl = gsap.timeline({ delay: .12 });
-      tl.from(splitWords(h), { yPercent: 112, duration: 1.15, stagger: .07, ease: 'power4.out' });
+      var tl = gsap.timeline();
+      tl.from(splitWords(h), { yPercent: 110, duration: .7, stagger: .035, ease: 'power3.out' });
       var rest = $$('.reveal-hero');
-      if (rest.length) tl.from(rest, { y: 22, opacity: 0, duration: .9, stagger: .12, ease: 'power3.out' }, '-=.65');
-      gsap.from('.bar', { y: -30, opacity: 0, duration: 1, ease: 'power3.out' });
+      if (rest.length) tl.from(rest, { y: 12, opacity: 0, duration: .5, stagger: .06, ease: 'power2.out' }, '-=.45');
+      var panel = $('.hero-glass');
+      if (panel) gsap.from(panel, { y: 18, opacity: 0, duration: .55, ease: 'power2.out' });
     }
     var media = $('.hero-media');
-    if (media) gsap.to(media, { yPercent: 7, scale: 1.05, ease: 'none', scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true } });
+    if (media) gsap.to(media, { yPercent: 5, ease: 'none', scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true } });
     $$('.rise').forEach(function (n) {
-      gsap.from(n, { y: 36, opacity: 0, duration: 1, ease: 'power3.out', clearProps: 'transform', scrollTrigger: { trigger: n, start: 'top 90%', once: true } });
+      gsap.from(n, { y: 18, opacity: 0, duration: .55, ease: 'power2.out', clearProps: 'transform', scrollTrigger: { trigger: n, start: 'top 94%', once: true } });
     });
-    $$('.closing-card, .cred-main').forEach(function (n) {
-      gsap.fromTo(n, { scale: .95 }, { scale: 1, ease: 'none', scrollTrigger: { trigger: n, start: 'top 95%', end: 'top 50%', scrub: true } });
-    });
-    if (matchMedia('(pointer: fine)').matches) {
-      $$('.btn').forEach(function (b) {
-        b.addEventListener('pointermove', function (e) {
-          var r = b.getBoundingClientRect();
-          gsap.to(b, { x: (e.clientX - r.left - r.width / 2) * .16, y: (e.clientY - r.top - r.height / 2) * .24, duration: .4 });
-        });
-        b.addEventListener('pointerleave', function () { gsap.to(b, { x: 0, y: 0, duration: .7, ease: 'elastic.out(1,.45)' }); });
-      });
-    }
     wireGlass($$('.glass-card, .glass-note, .cred, .buy-panel'));
   }
-  function transitions() {
-    if (!gsap || reduce) return;
-    var w = document.createElement('div');
-    w.className = 'wipe';
-    w.setAttribute('aria-hidden', 'true');
-    w.innerHTML = LOGO;
-    document.body.append(w);
-    var key = 'yg_wipe';
-    var entering = false;
-    try { entering = sessionStorage.getItem(key) === '1'; sessionStorage.removeItem(key); } catch (e) {}
-    gsap.set(w, { yPercent: entering ? 0 : 100, visibility: entering ? 'visible' : 'hidden' });
-    if (entering) gsap.to(w, { yPercent: -100, duration: .7, ease: 'power3.inOut', delay: .05, onComplete: function () { gsap.set(w, { visibility: 'hidden' }); } });
-    document.addEventListener('click', function (e) {
-      var a = e.target.closest('a[href]');
-      if (!a || a.target || a.hasAttribute('download') || e.metaKey || e.ctrlKey || e.shiftKey || e.defaultPrevented) return;
-      var href = a.getAttribute('href');
-      if (!href || href.charAt(0) === '#' || /^(https?:|mailto:|tel:)/.test(href)) return;
-      e.preventDefault();
-      try { sessionStorage.setItem(key, '1'); } catch (err) {}
-      gsap.set(w, { visibility: 'visible' });
-      gsap.fromTo(w, { yPercent: 100 }, { yPercent: 0, duration: .5, ease: 'power3.inOut', onComplete: function () { location.href = a.href; } });
-    });
-    addEventListener('pageshow', function (e) { if (e.persisted) gsap.set(w, { yPercent: 100, visibility: 'hidden' }); });
-  }
-
   /* ---------- start ---------- */
   function start() {
     layout();
-    ngjaLogo();
     playHero();
     bandVideos();
     intro();
-    transitions();
     if (pages[page]) pages[page]();
   }
   if (cfg.demo && !window.YG_DEMO) {
