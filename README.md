@@ -11,13 +11,9 @@
 5. මේ folder එක app.netlify.com/drop එකට drag කරන්න. දැනටමත් Netlify site එකක් තියෙනවා නම් ඒකේ **Deploys** page එකට drag කරන්න.
 6. Netlify link එක Pryme Store එකේ paste කරලා **Verify website** ඔබන්න.
 
-## NGJA logo එක
-
-Official logo file එක `ngja-logo.png` නමින් `assets` folder එකට දාලා ආයේ publish කරන්න. එතකොට ඒක තනියම පේනවා.
-
 ## Videos
 
-Publish කළාට පස්සේ `ඔයාගේ-link/video-check.html` open කරන්න. `OK` නම් video එක වැඩ. `FAILED` නම් ඒ page එකේ නමින් ඔයාගේ video එකක් `assets/video` folder එකට දාන්න, උදා: `home-1.mp4`, `about-1.mp4`, `gems-1.mp4`, `contact-1.mp4`, `buy-1.mp4`. Folder එකේ තියෙන video එක website එක මුලින්ම පාවිච්චි කරනවා.
+Publish කළාට පස්සේ `ඔයාගේ-link/video-check.html` open කරන්න. `OK` නම් video එක වැඩ. `FAILED` නම් ඒ page එකේ නමින් ඔයාගේ video එකක් `assets/video` folder එකට දාන්න, උදා: `home-1.mp4`, `about-1.mp4`, `gems-1.mp4`, `contact-1.mp4`, `buy-1.mp4`, `nature-1.mp4`, `events-1.mp4`. Folder එකේ තියෙන video එක website එක මුලින්ම පාවිච්චි කරනවා.
 
 ## Video sources
 
@@ -26,3 +22,5 @@ About us: [Sigiriya](https://pixabay.com/videos/forest-fortress-sigiriya-sri-lan
 Our Gems: [Adam's Peak](https://pixabay.com/videos/mountain-forest-adams-peak-sunrise-174999/), [Laxapana Falls](https://pixabay.com/videos/waterfall-cliff-river-water-forest-246461/).
 Contact us: [Sri Lanka beach](https://pixabay.com/videos/ocean-beach-palm-tropical-182817/), [Negombo Beach](https://pixabay.com/videos/beach-evening-sunshine-299021/).
 Buy now: [Ella train](https://pixabay.com/videos/sri-lanka-ella-train-srilanka-57165/).
+Our Nature: [Loggal Oya Reservoir](https://pixabay.com/videos/sri-lanka-ceylon-water-lake-forest-322546/).
+Gem Events: [Welioya temple](https://pixabay.com/videos/srilanka-temple-buddhism-religion-272321/).
