@@ -92,10 +92,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .split .w { display: inline-block; overflow: hidden; vertical-align: top; padding-block: .1em; margin-block: -.1em; }
 .split .w > span { display: inline-block; }
 
-.hero-gem { position: absolute; z-index: -1; right: 7%; top: 13%; width: clamp(160px, 27vw, 380px); pointer-events: none; animation: gemfloat 7s ease-in-out infinite alternate; }
-.hero-gem img { width: 100%; height: auto; }
-.hero-gem::after { content: ""; position: absolute; left: 16%; right: 16%; bottom: 7%; height: 8%; border-radius: 50%; background: radial-gradient(closest-side, rgba(8,18,60,.42), transparent); z-index: -1; }
-@keyframes gemfloat { to { transform: translateY(14px); } }
 
 /* ticker */
 .ticker { overflow: hidden; border-block: 1px solid var(--line); padding-block: 10px; background: rgba(255,255,255,.3); }
@@ -141,10 +137,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* trust */
 .trust-grid { display: grid; grid-template-columns: .9fr 1fr; gap: clamp(24px, 6vw, 80px); align-items: center; }
-.gem-draw { max-width: 380px; margin-inline: auto; width: 100%; }
-.gem-draw svg { width: 100%; overflow: visible; }
-.gl { stroke: var(--ink); stroke-width: 1; stroke-linejoin: round; }
-.gf { fill: rgba(210,225,235,.4); }
+.mine { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.mine-frame { position: relative; border-radius: 26px; overflow: hidden; border: 6px solid rgba(255,255,255,.75); box-shadow: 0 26px 50px -28px rgba(30,40,50,.45); background: #dbe9f1; }
+.mine-frame svg { width: 100%; height: auto; }
+.mine-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mine figcaption { font-size: .8rem; color: var(--soft); }
+.mine-labels { font-family: var(--body); opacity: .82; }
+.glint { transform-box: fill-box; transform-origin: center; animation: glint 3.6s ease-in-out infinite; }
+.g2 { animation-delay: .7s; } .g3 { animation-delay: 1.4s; } .g4 { animation-delay: 2.1s; } .g5 { animation-delay: 2.8s; }
+@keyframes glint { 0%, 70%, 100% { opacity: 0; transform: scale(.4); } 82% { opacity: 1; transform: scale(1); } }
+.palm { transform-box: fill-box; transform-origin: bottom center; animation: sway 6s ease-in-out infinite alternate; }
+.p2 { animation-delay: 1.5s; }
+@keyframes sway { from { transform: rotate(-1.2deg); } to { transform: rotate(1.4deg); } }
+.bucket, .rope { animation: haul 9s ease-in-out infinite alternate; }
+@keyframes haul { from { transform: translateY(0); } to { transform: translateY(-120px); } }
 .trust-copy { display: grid; gap: 12px; justify-items: start; }
 .big-num { font-family: var(--display); font-weight: 500; font-size: clamp(3.4rem, 8vw, 6rem); line-height: .9; letter-spacing: -.02em; }
 .big-num.small { font-size: clamp(2.6rem, 4vw, 3.4rem); }
@@ -353,7 +359,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .nav a { padding: 11px 14px; font-size: .95rem; }
   .nav .buy-link { margin: 6px 0 0; text-align: center; }
   .trust-grid, .about-story, .contact-grid, .detail, .buy { grid-template-columns: minmax(0, 1fr); }
-  .gem-draw { max-width: 240px; }
   .steps, .cred-grid { grid-template-columns: 1fr; }
   .glass-bar { grid-template-columns: 1fr auto; top: 66px; }
   .chips { grid-row: 2; grid-column: 1 / -1; }
@@ -383,7 +388,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .cta-row .btn { flex: 1 1 100%; }
   .specs { grid-template-columns: 1fr; }
   .buy-head .search { flex-basis: 100%; }
-  .hero-gem { top: 9%; right: 4%; width: 46vw; }
   .hero-copy { width: calc(100% - 20px); padding-bottom: 10px; }
   .closing-card, .contact-card { min-height: 240px; padding: 10px; }
 }
