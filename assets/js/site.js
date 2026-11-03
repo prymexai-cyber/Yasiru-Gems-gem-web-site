@@ -106,7 +106,7 @@
       '<p>Genuine, quality gemstones at low prices. NGJA registered, with more than 25 years of experience.</p><p class="foot-ngja"><img class="ngja-logo" src="assets/ngja-logo.png" alt="National Gem &amp; Jewellery Authority logo" width="46" height="46" loading="lazy"><span>Gem dealer: U. L. D. R. P GUNASINGHE<br>NGJA licence number: <span data-ngja-no>234533</span></span></p></div>' +
       '<div><h2>Pages</h2><ul><li><a href="index.html">Home</a></li><li><a href="about.html">About us</a></li><li><a href="gems.html">Our Gems</a></li><li><a href="nature.html">Our Nature</a></li><li><a href="events.html">Gem Events</a></li><li><a href="contact.html">Contact us</a></li><li><a href="buy.html">Buy now</a></li></ul></div>' +
       '<div><h2>WhatsApp</h2><ul><li><a data-phone href="#">+1 (402) 808-7890</a></li></ul></div></div>' +
-      '<p class="copy">&copy; ' + new Date().getFullYear() + ' Yasiru Gems</p></div>';
+      '<p class="copy">&copy; ' + new Date().getFullYear() + ' Yasiru Gems. Developed by Pryme X AI</p></div>';
     document.body.append(foot);
 
     var wa = document.createElement('a');
@@ -364,14 +364,6 @@
         animateIn($$('.gem-card', rail));
       });
       dragScroll(rail);
-      var lens = $('.glass-lens');
-      if (lens && gsap && !reduce) {
-        gsap.to(lens, { y: 26, rotation: 3, duration: 6, ease: 'sine.inOut', yoyo: true, repeat: -1 });
-        if (matchMedia('(pointer: fine)').matches) {
-          var x = gsap.quickTo(lens, 'x', { duration: 1.6, ease: 'power3' });
-          $('.hero').addEventListener('pointermove', function (e) { x((e.clientX / innerWidth - .5) * 90); });
-        }
-      }
       if (gsap && !reduce && window.ScrollTrigger) {
         var gl = $('.gl');
         if (gl) {
@@ -410,10 +402,35 @@
     },
     contact: function () {
       catalog(function (d) { applySite(d); });
-      $('#msg').addEventListener('submit', function (e) {
+      var form = $('#msg'), state = $('#formState'), fallback = $('#formWa'), sendBtn = $('#send');
+      form.addEventListener('submit', function (e) {
         e.preventDefault();
-        var f = new FormData(e.target);
-        window.open(waLink('Hello Yasiru Gems, my name is ' + f.get('name') + '.\n' + f.get('text')), '_blank', 'noopener');
+        var f = new FormData(form);
+        var body = { name: f.get('name'), contact: f.get('contact'), message: f.get('text'), website: f.get('website') };
+        function show(text) { state.textContent = text; state.classList.remove('hidden'); }
+        function failed() {
+          sendBtn.disabled = false;
+          show('Your message could not be sent. Please send it on WhatsApp instead.');
+          fallback.href = waLink('Hello Yasiru Gems, my name is ' + body.name + '.\n' + body.message);
+          fallback.classList.remove('hidden');
+        }
+        fallback.classList.add('hidden');
+        if (!cfg.api || !cfg.key) return failed();
+        sendBtn.disabled = true;
+        show('Sending your message...');
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 75000);
+        fetch(cfg.api + '/public/v1/' + encodeURIComponent(cfg.key) + '/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        }).then(function (r) {
+          if (!r.ok) throw new Error('send');
+          form.reset();
+          sendBtn.disabled = false;
+          show('Thank you. Your message has been sent, and we will reply soon.');
+        }).catch(failed).finally(function () { clearTimeout(timer); });
       });
     },
 
