@@ -584,3 +584,11 @@ font[style] { background: none !important; box-shadow: none !important; }
 .ask-lines h2 { margin: 0 0 4px; }
 .ask-lines .btn-wa { margin-top: 14px; }
 .ask-note { margin: 10px 0 0; font-size: .9rem; color: var(--soft); }
+
+/* order request (price on request gems) */
+.ask-info { margin: 14px 0 0; font-size: .9rem; }
+.request-done { max-width: 760px; margin: 0 auto; display: grid; gap: 14px; }
+.request-done h2 { margin: 0; }
+.done-mark { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--wa); color: #fff; font-size: 26px; font-weight: 700; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.row-btns .btn { width: auto; flex: 1 1 200px; }
