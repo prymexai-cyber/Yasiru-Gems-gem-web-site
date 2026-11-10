@@ -192,7 +192,7 @@
         '<label class="full">Note for us (optional)<textarea name="notes" rows="3" maxlength="1000" placeholder="Directions for delivery, or a question about your order"></textarea></label></div></section>' +
         '<section class="glass-card"><h2>Payment</h2><div class="pay-options">' +
         '<label class="pay-opt"><input type="radio" name="payment" value="bank" checked><span><strong>Bank transfer</strong><small>Transfer the total to one of our accounts, then upload your payment slip. We start processing your order as soon as the slip arrives.</small></span></label>' +
-        '<label class="pay-opt' + (C.siteInfo.cardPayments ? '' : ' off') + '"><input type="radio" name="payment" value="card"' + (C.siteInfo.cardPayments ? '' : ' disabled') + '><span><strong>Card payment</strong><small>' + (C.siteInfo.cardPayments ? 'Pay securely with Visa, Mastercard or Amex through PayHere.' : 'Coming soon. Please pay by bank transfer for now.') + '</small></span></label></div>' +
+        '<label class="pay-opt' + (C.siteInfo.cardPayments ? '' : ' off') + '"><input type="radio" name="payment" value="card"' + (C.siteInfo.cardPayments ? '' : ' disabled') + '><span><strong>Card payment</strong><small>' + (!C.siteInfo.cardPayments ? 'Coming soon. Please pay by bank transfer for now.' : C.siteInfo.cardMode === 'link' ? 'Pay with Visa or Mastercard. After you order, we send you a secure card payment link here and on WhatsApp.' : 'Pay securely with Visa, Mastercard or Amex through PayHere.') + '</small></span></label></div>' +
         '<div class="banks" id="bankList">' + banks.map(bankHtml).join('') + '</div></section></div>' +
         '<aside class="glass-card summary"><h2>Your order</h2>' + c.lines.map(function (l) { return lineHtml(l, false); }).join('') + summaryHtml(c) +
         '<label class="agree"><input type="checkbox" name="agree" required> I agree to the <a href="terms.html" target="_blank">Terms &amp; Conditions</a> and <a href="privacy.html" target="_blank">Privacy Policy</a></label>' +
@@ -278,6 +278,14 @@
       } else if (o.paymentMethod === 'card' && o.cardAvailable) {
         pay = '<div class="pay-box"><h2>Pay with card</h2><p>Pay <b class="notranslate">' + esc(money(o.total)) + '</b> securely through PayHere.</p><button type="button" class="btn btn-solid" id="payCard">Pay now with card</button><p class="form-error hidden" role="alert"></p>' +
           '<p class="hint">Prefer a bank transfer? Pay to one of the accounts below and upload your slip.</p></div>';
+      }
+      if (o.paymentMethod === 'card_link' && o.status !== 'cancelled' && o.paymentStatus !== 'paid') {
+        pay = o.payLink ?
+          '<div class="pay-box"><h2>Pay with card</h2><p>Your secure card payment link is ready. Pay <b class="notranslate">' + esc(money(o.total)) + '</b> with Visa or Mastercard.</p><a class="btn btn-solid" id="payLink" href="' + esc(o.payLink) + '" target="_blank" rel="noopener noreferrer">Pay by card</a>' +
+            '<p class="hint">After you pay, we confirm your payment and update this page. Questions? WhatsApp <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', I have a question about paying for order #' + o.no + '.') + '</span></p></div>' :
+          '<div class="pay-box"><h2>Pay with card</h2><p>Thank you. We are preparing a secure card payment link for <b class="notranslate">' + esc(money(o.total)) + '</b>. It will appear here and we will send it to your WhatsApp shortly.</p>' +
+            '<p class="hint">Want it sooner? Message us: <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', please send me the card payment link for order #' + o.no + '.') + '</span></p><p class="hint">Prefer a bank transfer? Pay to one of the accounts below and upload your slip.</p></div>';
+        if (!o.payLink && polls++ < 40) setTimeout(load, 15000);
       }
       var showBank = o.status !== 'cancelled' && o.paymentStatus !== 'paid' && !cardBack;
       var slipDone = o.paymentStatus === 'slip_uploaded';
