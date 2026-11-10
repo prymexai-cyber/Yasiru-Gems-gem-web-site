@@ -50,6 +50,11 @@
     return now;
   }
   function buyable(p) { return !p.sold && p.currency === 'LKR' && p.price !== null && p.price !== undefined; }
+  // Every gem that is not sold can go in the cart. Gems without an LKR price are priced on WhatsApp.
+  function cartable(p) { return !p.sold; }
+  function askMessage(p, qty) {
+    return gemMessage(p).replace('I would like to buy this gem:', 'I would like to buy this gem' + (qty > 1 ? ' (quantity ' + qty + ')' : '') + '. Please tell me the price:');
+  }
 
   /* ---------- cart and account ---------- */
   var CART_KEY = 'cgl_cart_' + (cfg.key || 'local');
@@ -464,7 +469,7 @@
 
   function cardHtml(p) {
     var img = p.images[0];
-    var cart = buyable(p) ? '<button type="button" class="card-cart" data-add="' + esc(p.slug) + '" data-max="' + (p.stock || 1) + '">Add to cart</button>' : '';
+    var cart = cartable(p) ? '<button type="button" class="card-cart" data-add="' + esc(p.slug) + '" data-max="' + (p.stock || 1) + '">Add to cart</button>' : '';
     return '<article class="gem-card' + (p.sold ? ' is-sold' : '') + '"><a class="gem-link" href="' + esc(gemUrl(p)) + '">' +
       '<div class="gem-pic">' + (img ? '<img src="' + esc(img.thumb) + '" alt="' + esc(p.name) + '" loading="lazy" decoding="async" draggable="false"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') + (p.sold ? soldBand() : '') + '</div>' +
       '<div class="gem-info"><h3>' + esc(p.name) + '</h3><div class="gem-meta">' + esc(metaLine(p)) + '</div><div class="gem-price">' + (p.sold ? 'Sold out' : priceHtml(p)) + '</div></div></a>' +
@@ -820,12 +825,11 @@
     var actions;
     if (p.sold) {
       actions = '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink('Hello ' + BRAND + ', ' + p.name + ' is sold out. Do you have a similar stone?')) + '">' + WA_ICON + 'Ask for a similar stone</a>';
-    } else if (buyable(p)) {
+    } else {
       actions = (max > 1 ? '<label class="qty">Quantity <input type="number" id="qty" min="1" max="' + max + '" value="1" inputmode="numeric"></label>' : '') +
         '<div class="buy-actions"><button type="button" class="btn btn-solid" id="addCart">Add to cart</button><button type="button" class="btn btn-white" id="buyNow">Buy now</button></div>' +
+        (buyable(p) ? '' : '<p class="ask-note">This gem is priced on request. <b>Buy now</b> opens WhatsApp, where we tell you the price and help you complete your purchase.</p>') +
         '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink(gemMessage(p))) + '">' + WA_ICON + 'Chat with us</a>';
-    } else {
-      actions = '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink(gemMessage(p))) + '">' + WA_ICON + 'Contact us to buy</a>';
     }
     box.style.display = '';
     box.innerHTML =
@@ -907,6 +911,7 @@
     });
     var buyNow = $('#buyNow', box);
     if (buyNow) buyNow.addEventListener('click', function () {
+      if (!buyable(p)) { window.open(waLink(askMessage(p, chosenQty())), '_blank', 'noopener'); return; }
       var c = cartGet().filter(function (x) { return x.slug !== p.slug; });
       c.push({ slug: p.slug, qty: chosenQty() });
       cartSet(c);
@@ -1086,7 +1091,7 @@
   /* ---------- shared with shop.js ---------- */
   window.CGL = {
     BRAND: BRAND, CONTACTS: CONTACTS, cfg: cfg, pages: pages, $: $, $$: $$, esc: esc, qs: qs, store: store,
-    money: money, payPrice: payPrice, priceHtml: priceHtml, buyable: buyable, catalog: catalog, applySite: applySite, siteInfo: siteInfo,
+    money: money, payPrice: payPrice, priceHtml: priceHtml, buyable: buyable, cartable: cartable, gemMessage: gemMessage, catalog: catalog, applySite: applySite, siteInfo: siteInfo,
     cartGet: cartGet, cartSet: cartSet, updateCartBadge: updateCartBadge, token: token, setToken: setToken, shopApi: shopApi,
     waLink: waLink, numbersHtml: numbersHtml, wireWa: wireWa, noteHtml: noteHtml, skeletons: skeletons, toast: toast, wireGlass: wireGlass, gemUrl: gemUrl,
   };
