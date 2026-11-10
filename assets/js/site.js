@@ -713,7 +713,7 @@
         if (!p) {
           tag.className = 'tag-empty';
           tag.textContent = 'No gem selected yet';
-          if ($('#checkoutGem')) $('#checkoutGem').classList.add('hidden');
+          if ($('#buyActs')) $('#buyActs').classList.add('hidden');
           chat.classList.add('is-off');
           chat.setAttribute('aria-disabled', 'true');
           chat.removeAttribute('target');
@@ -732,9 +732,8 @@
         chat.target = '_blank';
         chat.rel = 'noopener';
         chat.innerHTML = WA_ICON + 'Chat with us';
-        hint.textContent = 'WhatsApp opens with this gem in your message.';
-        var co = $('#checkoutGem');
-        if (co) { co.classList.toggle('hidden', !buyable(p)); co.dataset.slug = p.slug; }
+        hint.textContent = buyable(p) ? 'Add it to your cart, check out now, or chat with us on WhatsApp.' : 'This gem is priced on request. Check out to send your order, and we tell you the price on WhatsApp.';
+        if ($('#buyActs')) $('#buyActs').classList.toggle('hidden', !cartable(p));
         if (gsap && !reduce) gsap.from(tag, { scale: .94, opacity: 0, duration: .45, ease: 'back.out(1.6)' });
         if (scroll && matchMedia('(max-width: 960px)').matches) $('#panel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
@@ -760,6 +759,12 @@
         animateIn($$('.pick', pick));
       }
       chat.addEventListener('click', function (e) { if (!selected) e.preventDefault(); });
+      var addGem = $('#addGem');
+      if (addGem) addGem.addEventListener('click', function () {
+        if (!selected) return;
+        cartAdd(selected.slug, 1, selected.stock || 1);
+        toast('Added to your cart', 'cart.html', 'View cart');
+      });
       var co = $('#checkoutGem');
       if (co) co.addEventListener('click', function () {
         if (!selected) return;
