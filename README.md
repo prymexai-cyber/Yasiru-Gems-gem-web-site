@@ -1,11 +1,11 @@
-# Yasiru Gems website
+# Ceylon Gem Lanka website
 
-මේක Yasiru Gems website එක විතරයි. Products එන්නේ වෙනම තියෙන Pryme Store එකෙන්.
+මේක Ceylon Gem Lanka website එක විතරයි. Products එන්නේ වෙනම තියෙන Pryme Store එකෙන්.
 
 ## Publish කරන විදිහ
 
 1. මේ zip එක unzip කරන්න.
-2. Pryme Store එකේ **Websites > Add website** ඔබලා නම `Yasiru Gems`, WhatsApp `+1 402 808 7890`, **Gems and jewellery** තෝරන්න.
+2. Pryme Store එකේ **Websites > Add website** ඔබලා නම `Ceylon Gem Lanka`, WhatsApp `+1 402 808 7890`, **Gems and jewellery** තෝරන්න.
 3. **Download connection files** ඔබලා unzip කරන්න.
 4. `pryme.js` සහ `pryme-verify.txt` මේ folder එකට, `index.html` ළඟට දාන්න. පරණ `pryme.js` එක replace කරන්න.
 5. මේ folder එක app.netlify.com/drop එකට drag කරන්න. දැනටමත් Netlify site එකක් තියෙනවා නම් ඒකේ **Deploys** page එකට drag කරන්න.
@@ -24,3 +24,7 @@ Contact us: [Sri Lanka beach](https://pixabay.com/videos/ocean-beach-palm-tropic
 Buy now: [Ella train](https://pixabay.com/videos/sri-lanka-ella-train-srilanka-57165/).
 Our Nature: [Loggal Oya Reservoir](https://pixabay.com/videos/sri-lanka-ceylon-water-lake-forest-322546/).
 Gem Events: [Welioya temple](https://pixabay.com/videos/srilanka-temple-buddhism-religion-272321/).
+
+## Shop pages
+
+`cart.html`, `login.html`, `account.html`, `checkout.html`, `order.html`, `track.html`, `privacy.html`, `terms.html` — මේවා වැඩ කරන්නේ `assets/js/site.js` සහ `assets/js/shop.js` දෙකම එක්ක. Orders, customers, delivery charge, bank accounts සහ card payments (PayHere) Pryme Store එකෙන් පාලනය කරන්න.
