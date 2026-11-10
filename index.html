@@ -1,122 +1,1132 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ceylon Gem Lanka | Genuine gemstones at low prices</title>
-<meta name="description" content="Ceylon Gem Lanka sells genuine, quality gemstones at low prices. NGJA licensed gem dealer with more than 25 years of experience in Sri Lanka.">
-<meta property="og:title" content="Ceylon Gem Lanka | Genuine gemstones at low prices">
-<meta property="og:description" content="Ceylon Gem Lanka sells genuine, quality gemstones at low prices. NGJA licensed gem dealer with more than 25 years of experience in Sri Lanka.">
-<meta property="og:type" content="website">
-<meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#ffffff">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="preload" href="assets/fonts/bodoni-moda-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="assets/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/site.css">
-</head>
-<body data-page="home">
-<main>
-<section class="hero hero-full" data-hero="home">
-  <div class="hero-media" aria-hidden="true"></div>
-  <div class="hero-copy wrap"><div class="hero-glass">
-    <h1 class="split">Genuine gemstones at low prices</h1>
-    <p class="lead reveal-hero">We sell only genuine, quality stones. Ceylon Gem Lanka is run by an NGJA licensed gem dealer with more than 25 years of experience.</p>
-    <div class="cta-row reveal-hero">
-      <a class="btn btn-solid" href="gems.html">See our gems</a>
-      <a class="btn btn-white" data-wa="Hello Ceylon Gem Lanka, I would like to ask about your gemstones." href="#">Chat on WhatsApp</a>
-    </div>
-  </div></div>
-</section>
+'use strict';
+const path = require('path');
+const crypto = require('crypto');
+const express = require('express');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
+const sharp = require('sharp');
+const archiver = require('archiver');
+const { pool, migrate, newId, hashPassword, checkPassword } = require('./db');
+const { finalPrice } = require('./pricing');
+const mountShop = require('./shop');
+const { fetchVerifyFile, normalizeUrl } = require('./verify');
+const storage = require('./storage');
 
-<section class="ticker" aria-label="Why buy from us">
-  <div class="ticker-track">
-    <span>NGJA licensed dealer</span><span>25+ years of experience</span><span>Only genuine stones</span><span>Quality at low prices</span>
-    <span aria-hidden="true">NGJA licensed dealer</span><span aria-hidden="true">25+ years of experience</span><span aria-hidden="true">Only genuine stones</span><span aria-hidden="true">Quality at low prices</span>
-  </div>
-</section>
+const IS_PROD = process.env.NODE_ENV === 'production';
+const SECRET = process.env.SESSION_SECRET || (IS_PROD ? null : crypto.randomBytes(32).toString('hex'));
+if (!SECRET) throw new Error('SESSION_SECRET is required.');
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
 
-<section class="section wrap">
-  <div class="section-head">
-    <h2 class="rise">Stones in our collection</h2>
-    <a class="link rise" href="gems.html">View all gems</a>
-  </div>
-</section>
-<div class="rail" id="featured" tabindex="0" aria-label="Featured gems"></div>
+sharp.concurrency(1);
+sharp.cache(false);
 
-<section class="section trust-pin">
-  <div class="wrap trust-grid">
-    <figure class="mine rise">
-      <div class="mine-frame">
-        <svg viewBox="0 0 640 520" role="img" aria-label="Illustration of a traditional Sri Lankan gem pit, with a thatched shelter above a shaft that reaches the gem gravel">
-          <defs>
-            <linearGradient id="msky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dbe9f1"/><stop offset="1" stop-color="#f6efe2"/></linearGradient>
-            <linearGradient id="mearth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a9744a"/><stop offset="1" stop-color="#7c5236"/></linearGradient>
-            <linearGradient id="mclay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d4a35"/><stop offset="1" stop-color="#57392a"/></linearGradient>
-            <pattern id="mgravel" width="34" height="24" patternUnits="userSpaceOnUse"><rect width="34" height="24" fill="#4a3a30"/><ellipse cx="7" cy="7" rx="6" ry="4" fill="#786452"/><ellipse cx="24" cy="6" rx="5" ry="3.5" fill="#8f7a66"/><ellipse cx="15" cy="17" rx="7" ry="4.500" fill="#6a5647"/><ellipse cx="30" cy="18" rx="4" ry="3" fill="#7f6b59"/></pattern>
-          </defs>
-          <rect width="640" height="230" fill="url(#msky)"/>
-          <path d="M0 175 90 118l80 40 90-70 110 66 80-40 190 78v50H0z" fill="#a8c3ae"/>
-          <path d="M0 200 120 158l130 34 120-30 130 32 140-26v62H0z" fill="#7da284"/>
-          <g class="palm"><path d="M76 215c3-34 3-56 10-82" stroke="#6a5240" stroke-width="5" fill="none"/><path d="M86 133c-22-10-36-4-46 10 18-7 32-6 46-10zm0 0c-20 4-30 16-32 34 10-16 20-26 32-34zm0 0c18-14 34-12 46 2-18-5-32-4-46-2zm0 0c18 2 32 14 34 32-10-14-22-24-34-32zm0 0c-4-14-14-22-28-24 12 7 21 14 28 24z" fill="#4c7f5c"/></g>
-          <g class="palm p2"><path d="M566 216c-3-28-2-46-8-68" stroke="#6a5240" stroke-width="4" fill="none"/><path d="M558 148c-18-8-30-3-38 8 15-6 26-5 38-8zm0 0c-17 3-25 13-27 28 9-13 17-21 27-28zm0 0c15-11 28-10 38 2-15-4-27-3-38-2zm0 0c15 2 27 12 28 27-8-12-18-20-28-27z" fill="#4c7f5c"/></g>
-          <rect y="222" width="640" height="84" fill="url(#mearth)"/>
-          <rect y="222" width="640" height="12" fill="#6f9a6c"/>
-          <rect y="306" width="640" height="96" fill="url(#mclay)"/>
-          <rect y="402" width="640" height="74" fill="url(#mgravel)"/>
-          <rect y="476" width="640" height="44" fill="#3a2d27"/>
-          <rect x="290" y="222" width="72" height="196" fill="#2c211c"/>
-          <path d="M290 234h72M290 268h72M290 302h72M290 336h72M290 370h72M290 404h72" stroke="#a78357" stroke-width="5"/>
-          <path d="M290 222v196M362 222v196" stroke="#8a6a45" stroke-width="6"/>
-          <path d="M305 226v186M345 226v186M305 252h40M305 282h40M305 312h40M305 342h40M305 372h40" stroke="#c6a678" stroke-width="3" fill="none"/>
-          <path d="M268 222 286 118M384 222 366 118" stroke="#7c5c3c" stroke-width="7"/>
-          <path d="M238 124 326 62l88 62z" fill="#c9a766"/><path d="M238 124 326 62l88 62-16 8-72-50-72 50z" fill="#b08f52"/>
-          <path d="M280 142h92" stroke="#7c5c3c" stroke-width="7"/><circle cx="326" cy="142" r="9" fill="#5e4631"/>
-          <path class="rope" d="M326 150v226" stroke="#e5d6b4" stroke-width="2"/>
-          <path class="bucket" d="M314 376h24l-4 24h-16z" fill="#8f6a44"/>
-          <g fill="#fff"><path class="glint g1" d="M168 428l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path class="glint g2" d="M432 446l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path class="glint g3" d="M508 418l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path class="glint g4" d="M84 452l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path class="glint g5" d="M250 456l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></g>
-          <g class="mine-labels" font-size="13" fill="#fff"><text x="24" y="270">Topsoil</text><text x="24" y="360">Clay</text><text x="400" y="394">Illam, the gem gravel</text></g>
-        </svg>
-        <img class="mine-photo hidden" alt="A gem mine in Sri Lanka" data-mine-photo>
-      </div>
-      <figcaption data-mine-caption>How a traditional Sri Lankan gem pit reaches the gem gravel. Illustration.</figcaption>
-    </figure>
-    <div class="trust-copy">
-      <p class="big-num"><span id="years">25</span>+</p>
-      <h2 class="rise">Years spent with gemstones</h2>
-      <p class="rise">More than 25 years in the trade teaches you how to judge a stone and price it fairly. That experience is what you get when you buy from us.</p>
-      <div class="glass-note ngja-card rise"><img class="ngja-logo" src="assets/ngja-logo.png" alt="National Gem &amp; Jewellery Authority logo" width="58" height="58" loading="lazy"><div><span class="ngja-label">NGJA licensed gem dealer</span><span class="ngja-name">National Gem &amp; Jewellery Authority, Sri Lanka</span><span class="ngja-line"><b>U. L. D. R. P Gunasinghe</b></span><span class="ngja-line">More than 25 years in the gem trade</span></div></div>
-      <a class="btn btn-solid rise" href="about.html">About Ceylon Gem Lanka</a>
-    </div>
-  </div>
-</section>
+const MAX_MEDIA = 40;
+const VIDEO_TYPES = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
+const SESSION_DAYS = 30;
+const COOKIE = 'pryme_session';
+const OAUTH_COOKIE = 'pryme_oauth';
+const CURRENCIES = ['USD', 'LKR', 'EUR', 'GBP', 'AUD'];
 
-<section class="section wrap">
-  <h2 class="rise">Buying takes three steps</h2>
-  <ol class="steps">
-    <li class="glass-card rise"><span class="step-n">1</span><h3>Choose a gem</h3><p>Open any stone to see its photos and details. Zoom in as close as you like.</p></li>
-    <li class="glass-card rise"><span class="step-n">2</span><h3>Chat with us</h3><p>Press Chat with us and WhatsApp opens with your chosen gem already in the message.</p></li>
-    <li class="glass-card rise"><span class="step-n">3</span><h3>Agree the details</h3><p>Ask your questions and arrange everything with us directly.</p></li>
-  </ol>
-</section>
+// The dashboard must be allowed to show photos served from large storage.
+function r2Origin() {
+  try {
+    return storage.enabled() ? [new URL(process.env.R2_PUBLIC_URL.trim()).origin] : [];
+  } catch {
+    return [];
+  }
+}
 
-<section class="section wrap home-events hidden" id="homeEvents">
-  <div class="section-head"><h2>Upcoming gem events</h2><a class="link" href="events.html">View all events</a></div>
-  <div class="event-grid" id="homeEventGrid"></div>
-</section>
+const app = express();
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", 'blob:', 'data:', 'https://*.googleusercontent.com', ...r2Origin()],
+        styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        mediaSrc: ["'self'", 'blob:', ...r2Origin()],
+        connectSrc: ["'self'"],
+        frameAncestors: ["'none'"],
+        ...(IS_PROD ? {} : { upgradeInsecureRequests: null }),
+      },
+    },
+    ...(IS_PROD ? {} : { strictTransportSecurity: false }),
+  })
+);
 
-<section class="closing wrap">
-  <div class="closing-card rise" data-bgvideo="closing"><div class="band-glass">
-    <h2>Looking for a particular stone?</h2>
-    <p>Tell us what you need on WhatsApp.</p>
-    <a class="btn btn-white" data-wa="Hello Ceylon Gem Lanka, I am looking for a particular stone." href="#">Chat with us</a>
-  </div></div>
-</section>
-</main>
-<script src="pryme.js" defer></script>
-<script src="assets/js/gsap.min.js" defer></script>
-<script src="assets/js/ScrollTrigger.min.js" defer></script>
-<script src="assets/js/site.js" defer></script>
-<script src="assets/js/shop.js" defer></script>
-</body>
-</html>
+/* ---------- helpers ---------- */
+class HttpError extends Error {
+  constructor(status, code) {
+    super(code);
+    this.status = status;
+    this.code = code;
+  }
+}
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const str = (v, max = 200) => String(v ?? '').trim().slice(0, max);
+const publicBase = (req) =>
+  (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+function num(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 1e12) throw new HttpError(400, 'invalid_number');
+  return n;
+}
+
+function sign(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+function unsign(token) {
+  const [body, sig] = String(token || '').split('.');
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac('sha256', SECRET).update(body).digest();
+  const given = Buffer.from(sig, 'base64url');
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(body, 'base64url').toString());
+    return data.exp > Date.now() ? data : null;
+  } catch {
+    return null;
+  }
+}
+function readCookie(req, name) {
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return v.join('=');
+  }
+  return null;
+}
+function cookieOptions(maxAge) {
+  return { httpOnly: true, sameSite: 'lax', secure: IS_PROD, maxAge, path: '/' };
+}
+
+const requireAuth = wrap(async (req, _res, next) => {
+  const data = unsign(readCookie(req, COOKIE));
+  if (!data || !data.mid) throw new HttpError(401, 'login_required');
+  // Looking the member up each time means removing someone ends their access at once.
+  const { rows } = await pool.query('SELECT id, email, role, name, picture, display_name, job_title, phone, avatar_id FROM members WHERE id=$1', [data.mid]);
+  if (!rows[0]) throw new HttpError(401, 'login_required');
+  req.user = rows[0];
+  next();
+});
+const requireOwner = (req, _res, next) => next(req.user.role === 'owner' ? undefined : new HttpError(403, 'owner_only'));
+
+// Blocks cross-site form posts: a custom header forces a CORS preflight, which /api never approves.
+function csrfGuard(req, _res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (req.get('x-pryme') !== '1') return next(new HttpError(403, 'bad_request_origin'));
+  const origin = req.get('origin');
+  if (origin) {
+    let host = null;
+    try { host = new URL(origin).host; } catch { /* treated as a mismatch */ }
+    if (host !== req.get('host')) return next(new HttpError(403, 'bad_request_origin'));
+  }
+  next();
+}
+
+/* ---------- public, used by connected websites ---------- */
+const cache = new Map();
+let cacheBytes = 0;
+const CACHE_LIMIT = 48 * 1024 * 1024;
+function cachePut(key, item) {
+  const buf = item.data;
+  if (buf.length > CACHE_LIMIT / 4) return;
+  while (cacheBytes + buf.length > CACHE_LIMIT && cache.size) {
+    const [oldest, old] = cache.entries().next().value;
+    cache.delete(oldest);
+    cacheBytes -= old.data.length;
+  }
+  cache.set(key, item);
+  cacheBytes += buf.length;
+}
+
+app.get('/health', (_req, res) => res.type('text').send('ok'));
+
+// Sends part of a file when the browser asks for a range. Phones need this to play videos.
+function sendBuffer(req, res, buf, type) {
+  res.set({ 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=31536000, immutable', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.get('range') || '');
+  if (!m || (!m[1] && !m[2])) return res.end(buf);
+  let start = m[1] ? Number(m[1]) : Math.max(0, buf.length - Number(m[2]));
+  let end = m[1] && m[2] ? Math.min(Number(m[2]), buf.length - 1) : buf.length - 1;
+  if (start >= buf.length || start > end) {
+    res.status(416).set('Content-Range', `bytes */${buf.length}`);
+    return res.end();
+  }
+  res.status(206).set('Content-Range', `bytes ${start}-${end}/${buf.length}`);
+  res.end(buf.subarray(start, end + 1));
+}
+
+app.get(
+  '/img/:id/:size',
+  wrap(async (req, res) => {
+    const size = req.params.size === 'thumb' ? 'thumb' : 'full';
+    const key = `${req.params.id}:${size}`;
+    let hit = cache.get(key);
+    if (hit) {
+      cache.delete(key);
+      cache.set(key, hit);
+    } else {
+      const { rows } = await pool.query('SELECT thumb_data, full_data, object_key, kind, mime FROM images WHERE id=$1', [req.params.id]);
+      const row = rows[0];
+      if (!row) throw new HttpError(404, 'not_found');
+      const video = row.kind === 'video';
+      if (row.object_key) {
+        // Files in large storage go straight to the visitor from there.
+        res.set({ 'Cache-Control': 'public, max-age=31536000, immutable', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+        return res.redirect(302, storage.publicUrl(video ? `${row.object_key}/video` : `${row.object_key}/${size}.webp`));
+      }
+      const data = video || size === 'full' ? row.full_data : row.thumb_data;
+      if (!data) throw new HttpError(404, 'not_found');
+      hit = { data, type: video ? row.mime : 'image/webp' };
+      cachePut(key, hit);
+    }
+    sendBuffer(req, res, hit.data, hit.type);
+  })
+);
+
+function originAllowed(origin, site) {
+  if (!origin || !site.origin) return false;
+  if (origin === site.origin) return true;
+  const strip = (o) => o.replace('://www.', '://');
+  return strip(origin) === strip(site.origin);
+}
+
+app.get(
+  '/public/v1/:key/catalog',
+  wrap(async (req, res) => {
+    const { rows } = await pool.query('SELECT * FROM sites WHERE site_key=$1', [req.params.key]);
+    const site = rows[0];
+    if (!site || !site.verified_at) throw new HttpError(403, 'site_not_verified');
+    const origin = req.get('origin');
+    res.vary('Origin');
+    if (originAllowed(origin, site)) res.set('Access-Control-Allow-Origin', origin);
+    else if (origin) throw new HttpError(403, 'origin_not_allowed');
+
+    const products = await pool.query(
+      `SELECT p.*, COALESCE(json_agg(json_build_object('id', i.id, 'w', i.width, 'h', i.height, 'kind', i.kind) ORDER BY i.position)
+         FILTER (WHERE i.id IS NOT NULL), '[]') AS imgs
+       FROM products p
+       JOIN product_sites ps ON ps.product_id = p.id AND ps.site_id = $1
+       LEFT JOIN images i ON i.product_id = p.id
+       WHERE p.published
+       GROUP BY p.id
+       ORDER BY p.sold ASC, p.featured DESC, p.created_at DESC`,
+      [site.id]
+    );
+    const events = await pool.query(
+      `SELECT e.*, to_char(e.start_date, 'YYYY-MM-DD') AS start_text, to_char(e.end_date, 'YYYY-MM-DD') AS end_text,
+         (SELECT i.id FROM images i WHERE i.event_id = e.id LIMIT 1) AS image_id
+       FROM events e JOIN event_sites es ON es.event_id = e.id AND es.site_id = $1
+       WHERE e.published AND e.start_date IS NOT NULL
+       ORDER BY e.start_date`,
+      [site.id]
+    );
+    const base = publicBase(req);
+    res.set('Cache-Control', 'no-cache');
+    res.json({
+      site: {
+        name: site.name,
+        whatsapp: site.whatsapp,
+        deliveryFee: site.delivery_fee,
+        deliveryDays: site.delivery_days,
+        bankAccounts: site.bank_accounts,
+        cardPayments: Boolean((site.payhere_merchant_id && site.payhere_secret) || site.card_links),
+        cardMode: site.payhere_merchant_id && site.payhere_secret ? 'payhere' : site.card_links ? 'link' : '',
+      },
+      events: events.rows.map((e) => ({
+        title: e.title,
+        description: e.description,
+        location: e.location,
+        mapUrl: e.map_url,
+        time: e.time_text,
+        startDate: e.start_text,
+        endDate: e.end_text,
+        image: e.image_id ? { full: `${base}/img/${e.image_id}/full`, thumb: `${base}/img/${e.image_id}/thumb` } : null,
+      })),
+      products: products.rows.map((p) => {
+        const media = p.imgs.map((i) =>
+          i.kind === 'video'
+            ? { type: 'video', full: `${base}/img/${i.id}/full` }
+            : { type: 'image', full: `${base}/img/${i.id}/full`, thumb: `${base}/img/${i.id}/thumb`, w: i.w, h: i.h }
+        );
+        const sold = p.sold || p.stock <= 0;
+        return {
+          slug: p.slug,
+          name: p.name,
+          category: p.category,
+          price: p.price,
+          finalPrice: finalPrice(p),
+          discount: p.discount_type === 'none' || !Number(p.discount_value) ? null : { type: p.discount_type, value: Number(p.discount_value) },
+          currency: p.currency,
+          description: p.description,
+          specs: p.specs,
+          sold,
+          stock: sold ? 0 : p.stock,
+          featured: p.featured,
+          media,
+          images: media.filter((m) => m.type === 'image'),
+        };
+      }),
+    });
+  })
+);
+
+/* Contact forms on connected websites */
+const CALLMEBOT = (!IS_PROD && process.env.CALLMEBOT_TEST_URL) || 'https://api.callmebot.com/whatsapp.php';
+async function sendWhatsAppAlert(site, text) {
+  if (!site.alert_key || !site.whatsapp) return false;
+  const url = new URL(CALLMEBOT);
+  url.search = new URLSearchParams({ phone: `+${site.whatsapp}`, text: text.slice(0, 1500), apikey: site.alert_key });
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    const reply = await res.text();
+    if (!res.ok || /error|invalid|not (allowed|activated)/i.test(reply.replace(/<[^>]*>/g, ' '))) {
+      console.error('WhatsApp alert refused with status', res.status);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('WhatsApp alert failed:', err.name);
+    return false;
+  }
+}
+const contactLimit = rateLimit({ windowMs: 10 * 60000, limit: 6, standardHeaders: true, legacyHeaders: false, message: { error: 'too_many' } });
+async function contactSite(req, res) {
+  const { rows } = await pool.query('SELECT * FROM sites WHERE site_key=$1', [req.params.key]);
+  const site = rows[0];
+  if (!site || !site.verified_at) throw new HttpError(403, 'site_not_verified');
+  const origin = req.get('origin');
+  res.vary('Origin');
+  if (!originAllowed(origin, site)) throw new HttpError(403, 'origin_not_allowed');
+  res.set({ 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Max-Age': '600' });
+  return site;
+}
+app.options('/public/v1/:key/contact', wrap(async (req, res) => {
+  await contactSite(req, res);
+  res.status(204).end();
+}));
+app.post(
+  '/public/v1/:key/contact',
+  contactLimit,
+  express.json({ limit: '16kb' }),
+  wrap(async (req, res) => {
+    const site = await contactSite(req, res);
+    // Bots fill in the hidden field. They get a normal reply and nothing is saved.
+    if (str(req.body?.website, 100)) return res.json({ ok: true });
+    const name = str(req.body?.name, 80);
+    const contact = str(req.body?.contact, 40);
+    const body = str(req.body?.message, 2000);
+    if (!name || !body || contact.replace(/\D/g, '').length < 7) throw new HttpError(400, 'missing_fields');
+    const id = newId();
+    await pool.query('INSERT INTO messages (id, site_id, name, contact, body) VALUES ($1,$2,$3,$4,$5)', [id, site.id, name, contact, body]);
+    res.json({ ok: true });
+    const sent = await sendWhatsAppAlert(site, `New message from ${site.name}\nName: ${name}\nWhatsApp: ${contact}\n\n${body}`);
+    if (sent) await pool.query('UPDATE messages SET delivered=true WHERE id=$1', [id]).catch(() => {});
+  })
+);
+
+app.get('/embed.js', (_req, res) => {
+  res.set({ 'Cross-Origin-Resource-Policy': 'cross-origin', 'Cache-Control': 'public, max-age=3600' });
+  res.type('application/javascript').sendFile(path.join(__dirname, 'embed.js'));
+});
+
+/* ---------- Google login ---------- */
+const googleId = () => process.env.GOOGLE_CLIENT_ID || '';
+const googleSecret = () => process.env.GOOGLE_CLIENT_SECRET || '';
+const googleReady = () => googleId().endsWith('.apps.googleusercontent.com') && googleSecret().length > 8;
+const redirectUri = (req) => `${publicBase(req)}/auth/google/callback`;
+// The test suite points these at a stand-in Google server. Production always uses Google.
+const testBase = !IS_PROD && process.env.GOOGLE_TEST_BASE;
+const GOOGLE = {
+  auth: testBase ? `${testBase}/auth` : 'https://accounts.google.com/o/oauth2/v2/auth',
+  token: testBase ? `${testBase}/token` : 'https://oauth2.googleapis.com/token',
+  user: testBase ? `${testBase}/userinfo` : 'https://openidconnect.googleapis.com/v1/userinfo',
+};
+const authLimit = rateLimit({ windowMs: 15 * 60000, limit: 60, standardHeaders: true, legacyHeaders: false });
+
+app.get('/auth/google', authLimit, (req, res) => {
+  if (!googleReady()) return res.redirect('/?error=google_not_ready');
+  const state = crypto.randomBytes(24).toString('base64url');
+  const verifier = crypto.randomBytes(48).toString('base64url');
+  res.cookie(OAUTH_COOKIE, sign({ state, verifier, exp: Date.now() + 600000 }), cookieOptions(600000));
+  const url = new URL(GOOGLE.auth);
+  url.search = new URLSearchParams({
+    client_id: googleId(),
+    redirect_uri: redirectUri(req),
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'),
+    code_challenge_method: 'S256',
+    prompt: 'select_account',
+  });
+  res.redirect(url.href);
+});
+
+app.get(
+  '/auth/google/callback',
+  authLimit,
+  wrap(async (req, res) => {
+    const saved = unsign(readCookie(req, OAUTH_COOKIE));
+    res.clearCookie(OAUTH_COOKIE, { path: '/' });
+    if (!saved || !req.query.state || saved.state !== req.query.state || !req.query.code) return res.redirect('/?error=login_failed');
+    try {
+      const tokenRes = await fetch(GOOGLE.token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code: String(req.query.code),
+          client_id: googleId(),
+          client_secret: googleSecret(),
+          redirect_uri: redirectUri(req),
+          grant_type: 'authorization_code',
+          code_verifier: saved.verifier,
+        }),
+      });
+      if (!tokenRes.ok) throw new Error('token');
+      const { access_token: accessToken } = await tokenRes.json();
+      const userRes = await fetch(GOOGLE.user, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!userRes.ok) throw new Error('userinfo');
+      const profile = await userRes.json();
+      const email = String(profile.email || '').toLowerCase();
+      if (!email || profile.email_verified !== true) return res.redirect('/?error=not_allowed');
+      const { rows } = await pool.query(
+        'UPDATE members SET name=$1, picture=$2, last_login=now() WHERE email=$3 RETURNING id',
+        [str(profile.name, 120), str(profile.picture, 500), email]
+      );
+      if (!rows[0]) return res.redirect('/?error=not_allowed');
+      const maxAge = SESSION_DAYS * 86400000;
+      res.cookie(COOKIE, sign({ mid: rows[0].id, exp: Date.now() + maxAge }), cookieOptions(maxAge));
+      res.redirect('/');
+    } catch (err) {
+      console.error('Google login failed:', err.message);
+      res.redirect('/?error=login_failed');
+    }
+  })
+);
+
+/* ---------- dashboard API ---------- */
+const api = express.Router();
+app.use('/api', csrfGuard, api);
+
+api.get('/auth/status', (req, res) => res.json({ googleReady: googleReady(), redirectUri: redirectUri(req) }));
+api.post('/auth/logout', (_req, res) => {
+  res.clearCookie(COOKIE, { path: '/' });
+  res.json({ ok: true });
+});
+
+// Photos are uploaded raw, so this route comes before the JSON parser.
+api.post(
+  '/images',
+  requireAuth,
+  express.raw({ type: () => true, limit: '25mb' }),
+  wrap(async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) throw new HttpError(400, 'bad_image');
+    let full, thumb;
+    try {
+      full = await sharp(req.body, { limitInputPixels: 80e6 })
+        .rotate()
+        .resize(2000, 2000, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 84 })
+        .toBuffer({ resolveWithObject: true });
+      thumb = await sharp(full.data).resize(680, 680, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 74 }).toBuffer();
+    } catch {
+      throw new HttpError(400, 'bad_image');
+    }
+    const id = newId(12);
+    const size = full.data.length + thumb.length;
+    if (storage.enabled()) {
+      const key = `img/${id}`;
+      try {
+        await storage.putObject(`${key}/full.webp`, full.data);
+        await storage.putObject(`${key}/thumb.webp`, thumb);
+      } catch (err) {
+        console.error(err.message);
+        throw new HttpError(502, 'storage_failed');
+      }
+      await pool.query('INSERT INTO images (id, object_key, size_bytes, width, height) VALUES ($1,$2,$3,$4,$5)', [id, key, size, full.info.width, full.info.height]);
+    } else {
+      await pool.query('INSERT INTO images (id, full_data, thumb_data, size_bytes, width, height) VALUES ($1,$2,$3,$4,$5,$6)', [
+        id,
+        full.data,
+        thumb,
+        size,
+        full.info.width,
+        full.info.height,
+      ]);
+    }
+    res.status(201).json({ id, thumb: `/img/${id}/thumb`, full: `/img/${id}/full` });
+  })
+);
+
+// Videos for product pages. Large storage allows bigger files.
+api.post(
+  '/videos',
+  requireAuth,
+  express.raw({ type: () => true, limit: '100mb' }),
+  wrap(async (req, res) => {
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length < 64) throw new HttpError(400, 'bad_video');
+    const large = storage.enabled();
+    if (!large && buf.length > 30 * 1048576) throw new HttpError(413, 'video_too_large');
+    let mime = null;
+    if (buf.subarray(4, 8).toString('latin1') === 'ftyp') mime = buf.subarray(8, 10).toString('latin1') === 'qt' ? 'video/quicktime' : 'video/mp4';
+    else if (buf.readUInt32BE(0) === 0x1a45dfa3) mime = 'video/webm';
+    if (!mime) throw new HttpError(400, 'bad_video');
+    const id = newId(12);
+    if (large) {
+      const key = `vid/${id}`;
+      try {
+        await storage.putObject(`${key}/video`, buf, mime);
+      } catch (err) {
+        console.error(err.message);
+        throw new HttpError(502, 'storage_failed');
+      }
+      await pool.query("INSERT INTO images (id, object_key, size_bytes, width, height, kind, mime) VALUES ($1,$2,$3,0,0,'video',$4)", [id, key, buf.length, mime]);
+    } else {
+      await pool.query("INSERT INTO images (id, full_data, size_bytes, width, height, kind, mime) VALUES ($1,$2,$3,0,0,'video',$4)", [id, buf, buf.length, mime]);
+    }
+    res.status(201).json({ id, kind: 'video', full: `/img/${id}/full` });
+  })
+);
+
+api.use(express.json({ limit: '200kb' }));
+
+const meOut = (u) => ({
+  email: u.email,
+  role: u.role,
+  name: u.display_name || u.name,
+  picture: u.avatar_id ? `/img/${u.avatar_id}/thumb` : u.picture,
+  hasCustomPhoto: Boolean(u.avatar_id),
+  jobTitle: u.job_title,
+  phone: u.phone,
+});
+api.get('/me', requireAuth, (req, res) => res.json(meOut(req.user)));
+api.patch(
+  '/me',
+  requireAuth,
+  wrap(async (req, res) => {
+    const u = req.user;
+    let avatar = u.avatar_id;
+    if (req.body.avatar_id !== undefined && req.body.avatar_id !== avatar) {
+      const next = req.body.avatar_id ? String(req.body.avatar_id).slice(0, 40) : null;
+      if (next) {
+        const found = await pool.query('SELECT 1 FROM images WHERE id=$1 AND product_id IS NULL AND event_id IS NULL', [next]);
+        if (!found.rows[0]) throw new HttpError(400, 'bad_image');
+      }
+      avatar = next;
+    }
+    const { rows } = await pool.query(
+      'UPDATE members SET display_name=$1, job_title=$2, phone=$3, avatar_id=$4 WHERE id=$5 RETURNING *',
+      [
+        req.body.name !== undefined ? str(req.body.name, 80) : u.display_name,
+        req.body.jobTitle !== undefined ? str(req.body.jobTitle, 80) : u.job_title,
+        req.body.phone !== undefined ? str(req.body.phone, 30) : u.phone,
+        avatar,
+        u.id,
+      ]
+    );
+    if (u.avatar_id && u.avatar_id !== avatar) {
+      await pool.query('DELETE FROM images WHERE id=$1 AND product_id IS NULL AND event_id IS NULL', [u.avatar_id]);
+    }
+    res.json(meOut(rows[0]));
+  })
+);
+
+/* team */
+api.get(
+  '/members',
+  requireAuth,
+  requireOwner,
+  wrap(async (_req, res) => {
+    const { rows } = await pool.query('SELECT id, email, role, name, picture, last_login FROM members ORDER BY created_at');
+    res.json(rows);
+  })
+);
+api.post(
+  '/members',
+  requireAuth,
+  requireOwner,
+  wrap(async (req, res) => {
+    const email = str(req.body.email, 200).toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'bad_email');
+    const made = await pool.query('INSERT INTO members (id, email) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING', [newId(), email]);
+    if (!made.rowCount) throw new HttpError(409, 'email_taken');
+    res.status(201).json({ ok: true });
+  })
+);
+api.delete(
+  '/members/:id',
+  requireAuth,
+  requireOwner,
+  wrap(async (req, res) => {
+    await pool.query("DELETE FROM members WHERE id=$1 AND role<>'owner'", [req.params.id]);
+    res.json({ ok: true });
+  })
+);
+
+/* websites */
+const siteOut = (s, counts = {}) => ({
+  id: s.id,
+  name: s.name,
+  url: s.url,
+  siteKey: s.site_key,
+  verified: Boolean(s.verified_at),
+  verifiedAt: s.verified_at,
+  whatsapp: s.whatsapp,
+  fields: s.fields,
+  hasAlertKey: Boolean(s.alert_key),
+  deliveryFee: s.delivery_fee,
+  deliveryDays: s.delivery_days,
+  bankAccounts: s.bank_accounts,
+  payhere: { merchantId: s.payhere_merchant_id, hasSecret: Boolean(s.payhere_secret), sandbox: s.payhere_sandbox },
+  cardLinks: s.card_links,
+  nextOrderNo: s.next_order_no,
+  productCount: counts[s.id] || 0,
+});
+
+api.get(
+  '/sites',
+  requireAuth,
+  wrap(async (_req, res) => {
+    const [sites, counts] = await Promise.all([
+      pool.query('SELECT * FROM sites ORDER BY created_at'),
+      pool.query('SELECT site_id, count(*)::int AS n FROM product_sites GROUP BY site_id'),
+    ]);
+    const map = Object.fromEntries(counts.rows.map((r) => [r.site_id, r.n]));
+    res.json(sites.rows.map((s) => siteOut(s, map)));
+  })
+);
+api.post(
+  '/sites',
+  requireAuth,
+  requireOwner,
+  wrap(async (req, res) => {
+    const name = str(req.body.name, 80);
+    if (!name) throw new HttpError(400, 'name_required');
+    const { rows } = await pool.query(
+      'INSERT INTO sites (id, name, site_key, verify_token, whatsapp, fields) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [newId(), name, 'site_' + newId(12), newId(24), str(req.body.whatsapp, 24).replace(/\D/g, ''), JSON.stringify(cleanFields(req.body.fields))]
+    );
+    res.status(201).json(siteOut(rows[0]));
+  })
+);
+
+async function getSite(id) {
+  const { rows } = await pool.query('SELECT * FROM sites WHERE id=$1', [id]);
+  if (!rows[0]) throw new HttpError(404, 'not_found');
+  return rows[0];
+}
+
+function cleanBanks(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .slice(0, 6)
+    .map((b) => ({ bank: str(b?.bank, 80), number: str(b?.number, 40), name: str(b?.name, 80), branch: str(b?.branch, 80) }))
+    .filter((b) => b.bank && b.number);
+}
+
+function cleanFields(input) {
+  if (!Array.isArray(input)) return [];
+  return [...new Set(input.map((f) => str(f, 40)).filter(Boolean))].slice(0, 30);
+}
+
+api.patch(
+  '/sites/:id',
+  requireAuth,
+  requireOwner,
+  wrap(async (req, res) => {
+    const site = await getSite(req.params.id);
+    const name = req.body.name !== undefined ? str(req.body.name, 80) : site.name;
+    if (!name) throw new HttpError(400, 'name_required');
+    const whatsapp = req.body.whatsapp !== undefined ? str(req.body.whatsapp, 24).replace(/\D/g, '') : site.whatsapp;
+    const fields = req.body.fields !== undefined ? cleanFields(req.body.fields) : site.fields;
+    const alertKey = req.body.alertKey !== undefined ? str(req.body.alertKey, 100) : site.alert_key;
+    let fee = site.delivery_fee;
+    if (req.body.deliveryFee !== undefined) {
+      fee = num(req.body.deliveryFee);
+      if (fee === null || fee > 1e6) throw new HttpError(400, 'invalid_number');
+    }
+    let days = site.delivery_days;
+    if (req.body.deliveryDays !== undefined) {
+      days = parseInt(req.body.deliveryDays, 10);
+      if (!Number.isInteger(days) || days < 1 || days > 60) throw new HttpError(400, 'invalid_number');
+    }
+    const banks = req.body.bankAccounts !== undefined ? cleanBanks(req.body.bankAccounts) : site.bank_accounts;
+    const ph = req.body.payhere || {};
+    const merchant = ph.merchantId !== undefined ? str(ph.merchantId, 40) : site.payhere_merchant_id;
+    const secret = ph.clear ? '' : ph.secret ? str(ph.secret, 200) : site.payhere_secret;
+    const sandbox = ph.sandbox !== undefined ? Boolean(ph.sandbox) : site.payhere_sandbox;
+    const cardLinks = req.body.cardLinks !== undefined ? Boolean(req.body.cardLinks) : site.card_links;
+    const { rows } = await pool.query(
+      `UPDATE sites SET name=$1, whatsapp=$2, fields=$3, alert_key=$4, delivery_fee=$5, delivery_days=$6, bank_accounts=$7,
+         payhere_merchant_id=$8, payhere_secret=$9, payhere_sandbox=$10, card_links=$12 WHERE id=$11 RETURNING *`,
+      [name, whatsapp, JSON.stringify(fields), alertKey, fee, days, JSON.stringify(banks), ph.clear ? '' : merchant, secret, sandbox, site.id, cardLinks]
+    );
+    res.json(siteOut(rows[0]));
+  })
+);
+api.delete(
+  '/sites/:id',
+  requireAuth,
+  requireOwner,
+  wrap(async (req, res) => {
+    await pool.query('DELETE FROM sites WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  })
+);
+api.post(
+  '/sites/:id/verify',
+  requireAuth,
+  requireOwner,
+  wrap(async (req, res) => {
+    const site = await getSite(req.params.id);
+    const target = normalizeUrl(req.body.url);
+    if (!target) throw new HttpError(400, 'bad_url');
+    let found;
+    try {
+      found = await fetchVerifyFile(target.url);
+    } catch (err) {
+      const known = ['file_not_found', 'https_required', 'blocked_address'];
+      throw new HttpError(400, known.includes(err.message) ? err.message : 'site_unreachable');
+    }
+    if (found !== `pryme-verify=${site.verify_token}`) throw new HttpError(400, 'token_mismatch');
+    const { rows } = await pool.query('UPDATE sites SET url=$1, origin=$2, verified_at=now() WHERE id=$3 RETURNING *', [
+      target.url,
+      target.origin,
+      site.id,
+    ]);
+    res.json(siteOut(rows[0]));
+  })
+);
+api.get(
+  '/sites/:id/verify-file',
+  requireAuth,
+  wrap(async (req, res) => {
+    const site = await getSite(req.params.id);
+    res.attachment('pryme-verify.txt').type('text/plain').send(`pryme-verify=${site.verify_token}\n`);
+  })
+);
+api.get(
+  '/sites/:id/connect.zip',
+  requireAuth,
+  wrap(async (req, res) => {
+    const site = await getSite(req.params.id);
+    res.attachment('pryme-connect.zip').type('application/zip');
+    const zip = archiver('zip', { zlib: { level: 6 } });
+    zip.on('error', (e) => res.destroy(e));
+    zip.pipe(res);
+    zip.append(`window.PRYME = ${JSON.stringify({ api: publicBase(req), key: site.site_key })};\n`, { name: 'pryme.js' });
+    zip.append(`pryme-verify=${site.verify_token}\n`, { name: 'pryme-verify.txt' });
+    await zip.finalize();
+  })
+);
+
+/* products */
+const productSelect = `
+  SELECT p.*,
+    COALESCE((SELECT json_agg(json_build_object('id', i.id, 'kind', i.kind, 'thumb', '/img/' || i.id || '/thumb', 'full', '/img/' || i.id || '/full') ORDER BY i.position)
+              FROM images i WHERE i.product_id = p.id), '[]') AS images,
+    COALESCE((SELECT json_agg(ps.site_id) FROM product_sites ps WHERE ps.product_id = p.id), '[]') AS site_ids
+  FROM products p`;
+
+api.get(
+  '/products',
+  requireAuth,
+  wrap(async (req, res) => {
+    const where = [];
+    const args = [];
+    if (req.query.site) {
+      args.push(String(req.query.site));
+      where.push(`EXISTS (SELECT 1 FROM product_sites x WHERE x.product_id=p.id AND x.site_id=$${args.length})`);
+    }
+    if (req.query.q) {
+      args.push(`%${String(req.query.q).replace(/[%_\\]/g, '\\$&')}%`);
+      where.push(`(p.name ILIKE $${args.length} OR p.category ILIKE $${args.length})`);
+    }
+    const sql = `${productSelect} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY p.created_at DESC LIMIT 500`;
+    const { rows } = await pool.query(sql, args);
+    res.json(rows);
+  })
+);
+
+function productFields(b) {
+  const specs = (Array.isArray(b.specs) ? b.specs : [])
+    .map((x) => ({ label: str(x?.label, 40), value: str(x?.value, 200) }))
+    .filter((x) => x.label && x.value)
+    .slice(0, 30);
+  return {
+    name: str(b.name, 120),
+    category: str(b.category, 60),
+    price: num(b.price),
+    currency: CURRENCIES.includes(b.currency) ? b.currency : 'LKR',
+    description: str(b.description, 8000),
+    specs: JSON.stringify(specs),
+    sold: Boolean(b.sold),
+    featured: Boolean(b.featured),
+    published: b.published !== false,
+    ...discountFields(b),
+  };
+}
+
+function discountFields(b) {
+  const stock = b.stock === undefined || b.stock === '' ? 1 : parseInt(b.stock, 10);
+  if (!Number.isInteger(stock) || stock < 0 || stock > 100000) throw new HttpError(400, 'invalid_number');
+  const type = ['percent', 'amount'].includes(b.discount_type) ? b.discount_type : 'none';
+  const value = type === 'none' ? 0 : num(b.discount_value) || 0;
+  if (type === 'percent' && value > 100) throw new HttpError(400, 'bad_discount');
+  const price = num(b.price);
+  if (type === 'amount' && price !== null && value > price) throw new HttpError(400, 'bad_discount');
+  if (type !== 'none' && price === null) throw new HttpError(400, 'discount_needs_price');
+  return { stock, discount_type: type, discount_value: value };
+}
+
+function slugify(name) {
+  const base = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  return `${base || 'item'}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+async function saveRelations(client, productId, b) {
+  const imageIds = Array.isArray(b.image_ids) ? b.image_ids.map(String).slice(0, MAX_MEDIA) : [];
+  const siteIds = Array.isArray(b.site_ids) ? b.site_ids.map(String) : [];
+  // A draft can be saved unfinished. A live product needs a photo and somewhere to appear.
+  if (b.published !== false && !imageIds.length) throw new HttpError(400, 'photo_required');
+  if (b.published !== false && !siteIds.length) throw new HttpError(400, 'site_required');
+
+  await client.query('DELETE FROM images WHERE product_id=$1 AND NOT (id = ANY($2))', [productId, imageIds]);
+  // Only unattached photos, or this product's own, can be linked.
+  const linked = await client.query(
+    `UPDATE images SET product_id=$1, position=array_position($2::text[], id)
+     WHERE id = ANY($2) AND (product_id IS NULL OR product_id=$1)`,
+    [productId, imageIds]
+  );
+  if (linked.rowCount !== new Set(imageIds).size) throw new HttpError(400, 'photo_required');
+  if (b.published !== false) {
+    const photos = await client.query("SELECT count(*)::int AS n FROM images WHERE product_id=$1 AND kind='image'", [productId]);
+    if (!photos.rows[0].n) throw new HttpError(400, 'photo_required');
+  }
+  await client.query('DELETE FROM product_sites WHERE product_id=$1', [productId]);
+  const valid = await client.query(
+    'INSERT INTO product_sites (product_id, site_id) SELECT $1, id FROM sites WHERE id = ANY($2)',
+    [productId, siteIds]
+  );
+  if (b.published !== false && !valid.rowCount) throw new HttpError(400, 'site_required');
+}
+
+async function inTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const out = await fn(client);
+    await client.query('COMMIT');
+    return out;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+api.post(
+  '/products',
+  requireAuth,
+  wrap(async (req, res) => {
+    const f = productFields(req.body);
+    if (!f.name) throw new HttpError(400, 'name_required');
+    const id = newId();
+    const cols = Object.keys(f);
+    await inTransaction(async (c) => {
+      await c.query(
+        `INSERT INTO products (id, slug, ${cols.join(',')}) VALUES ($1,$2,${cols.map((_, i) => `$${i + 3}`).join(',')})`,
+        [id, slugify(f.name), ...cols.map((k) => f[k])]
+      );
+      await saveRelations(c, id, req.body);
+    });
+    const { rows } = await pool.query(`${productSelect} WHERE p.id=$1`, [id]);
+    res.status(201).json(rows[0]);
+  })
+);
+api.put(
+  '/products/:id',
+  requireAuth,
+  wrap(async (req, res) => {
+    const f = productFields(req.body);
+    if (!f.name) throw new HttpError(400, 'name_required');
+    const cols = Object.keys(f);
+    await inTransaction(async (c) => {
+      const up = await c.query(
+        `UPDATE products SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(',')}, updated_at=now() WHERE id=$1`,
+        [req.params.id, ...cols.map((k) => f[k])]
+      );
+      if (!up.rowCount) throw new HttpError(404, 'not_found');
+      await saveRelations(c, req.params.id, req.body);
+    });
+    const { rows } = await pool.query(`${productSelect} WHERE p.id=$1`, [req.params.id]);
+    res.json(rows[0]);
+  })
+);
+api.post(
+  '/products/:id/sold',
+  requireAuth,
+  wrap(async (req, res) => {
+    // Marking a stone available again with nothing in stock puts one back in stock.
+    const { rowCount } = await pool.query('UPDATE products SET sold=$1, stock = CASE WHEN NOT $1 AND stock <= 0 THEN 1 ELSE stock END, updated_at=now() WHERE id=$2', [
+      Boolean(req.body.sold),
+      req.params.id,
+    ]);
+    if (!rowCount) throw new HttpError(404, 'not_found');
+    res.json({ ok: true, sold: Boolean(req.body.sold) });
+  })
+);
+api.post(
+  '/products/:id/duplicate',
+  requireAuth,
+  wrap(async (req, res) => {
+    const id = newId();
+    await inTransaction(async (c) => {
+      const { rows } = await c.query('SELECT * FROM products WHERE id=$1', [req.params.id]);
+      if (!rows[0]) throw new HttpError(404, 'not_found');
+      const name = `${rows[0].name} (copy)`.slice(0, 120);
+      await c.query(
+        `INSERT INTO products (id, slug, name, category, price, currency, description, specs, featured, published, stock, discount_type, discount_value)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,false,false,1,$9,$10)`,
+        [id, slugify(name), name, rows[0].category, rows[0].price, rows[0].currency, rows[0].description, JSON.stringify(rows[0].specs), rows[0].discount_type, rows[0].discount_value]
+      );
+      await c.query(
+        `INSERT INTO images (id, product_id, position, full_data, thumb_data, object_key, size_bytes, width, height, kind, mime)
+         SELECT md5(random()::text || clock_timestamp()::text), $1, position, full_data, thumb_data, object_key, size_bytes, width, height, kind, mime FROM images WHERE product_id=$2`,
+        [id, req.params.id]
+      );
+      await c.query('INSERT INTO product_sites (product_id, site_id) SELECT $1, site_id FROM product_sites WHERE product_id=$2', [id, req.params.id]);
+    });
+    const { rows } = await pool.query(`${productSelect} WHERE p.id=$1`, [id]);
+    res.status(201).json(rows[0]);
+  })
+);
+api.delete(
+  '/products/:id',
+  requireAuth,
+  wrap(async (req, res) => {
+    await pool.query('DELETE FROM products WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+    removeDeletedObjects();
+  })
+);
+
+/* messages */
+api.get(
+  '/messages',
+  requireAuth,
+  wrap(async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT m.id, m.name, m.contact, m.body, m.delivered, m.seen, m.created_at, s.name AS site_name
+       FROM messages m LEFT JOIN sites s ON s.id = m.site_id ORDER BY m.created_at DESC LIMIT 300`
+    );
+    await pool.query('UPDATE messages SET seen=true WHERE NOT seen');
+    res.json(rows);
+  })
+);
+api.delete(
+  '/messages/:id',
+  requireAuth,
+  wrap(async (req, res) => {
+    await pool.query('DELETE FROM messages WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  })
+);
+api.post(
+  '/sites/:id/test-alert',
+  requireAuth,
+  requireOwner,
+  wrap(async (req, res) => {
+    const site = await getSite(req.params.id);
+    if (!(await sendWhatsAppAlert(site, `Test message from Pryme Store for ${site.name}. Your website contact form is connected.`))) throw new HttpError(400, 'alert_failed');
+    res.json({ ok: true });
+  })
+);
+
+/* events */
+const eventSelect = `
+  SELECT e.id, e.title, e.description, e.location, e.map_url, e.time_text, e.published,
+    to_char(e.start_date, 'YYYY-MM-DD') AS start_date, to_char(e.end_date, 'YYYY-MM-DD') AS end_date,
+    (SELECT i.id FROM images i WHERE i.event_id = e.id LIMIT 1) AS image_id,
+    COALESCE((SELECT json_agg(es.site_id) FROM event_sites es WHERE es.event_id = e.id), '[]') AS site_ids
+  FROM events e`;
+
+function eventDate(v) {
+  const text = str(v, 10);
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(text))) throw new HttpError(400, 'bad_date');
+  return text;
+}
+function eventFields(b) {
+  const title = str(b.title, 140);
+  if (!title) throw new HttpError(400, 'name_required');
+  const mapUrl = str(b.map_url, 500);
+  if (mapUrl) {
+    let u;
+    try { u = new URL(mapUrl); } catch { throw new HttpError(400, 'bad_map_url'); }
+    if (u.protocol !== 'https:') throw new HttpError(400, 'bad_map_url');
+  }
+  const start = eventDate(b.start_date);
+  const end = eventDate(b.end_date);
+  if (start && end && end < start) throw new HttpError(400, 'bad_date_order');
+  const published = b.published !== false;
+  if (published && !start) throw new HttpError(400, 'date_required');
+  return { title, description: str(b.description, 5000), location: str(b.location, 200), map_url: mapUrl, time_text: str(b.time_text, 80), start_date: start, end_date: end, published };
+}
+async function saveEventRelations(c, id, b, published) {
+  const imageId = b.image_id ? String(b.image_id) : null;
+  const siteIds = Array.isArray(b.site_ids) ? b.site_ids.map(String) : [];
+  if (published && !imageId) throw new HttpError(400, 'event_photo_required');
+  if (published && !siteIds.length) throw new HttpError(400, 'site_required');
+  await c.query('DELETE FROM images WHERE event_id=$1 AND id IS DISTINCT FROM $2', [id, imageId]);
+  if (imageId) {
+    const linked = await c.query('UPDATE images SET event_id=$1 WHERE id=$2 AND product_id IS NULL AND (event_id IS NULL OR event_id=$1)', [id, imageId]);
+    if (!linked.rowCount) throw new HttpError(400, 'event_photo_required');
+  }
+  await c.query('DELETE FROM event_sites WHERE event_id=$1', [id]);
+  await c.query('INSERT INTO event_sites (event_id, site_id) SELECT $1, id FROM sites WHERE id = ANY($2)', [id, siteIds]);
+}
+api.get(
+  '/events',
+  requireAuth,
+  wrap(async (_req, res) => {
+    const { rows } = await pool.query(`${eventSelect} ORDER BY e.start_date DESC NULLS FIRST, e.created_at DESC LIMIT 500`);
+    res.json(rows);
+  })
+);
+api.post(
+  '/events',
+  requireAuth,
+  wrap(async (req, res) => {
+    const f = eventFields(req.body);
+    const id = newId();
+    const cols = Object.keys(f);
+    await inTransaction(async (c) => {
+      await c.query(`INSERT INTO events (id, ${cols.join(',')}) VALUES ($1,${cols.map((_, i) => `$${i + 2}`).join(',')})`, [id, ...cols.map((k) => f[k])]);
+      await saveEventRelations(c, id, req.body, f.published);
+    });
+    const { rows } = await pool.query(`${eventSelect} WHERE e.id=$1`, [id]);
+    res.status(201).json(rows[0]);
+  })
+);
+api.put(
+  '/events/:id',
+  requireAuth,
+  wrap(async (req, res) => {
+    const f = eventFields(req.body);
+    const cols = Object.keys(f);
+    await inTransaction(async (c) => {
+      const up = await c.query(`UPDATE events SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(',')}, updated_at=now() WHERE id=$1`, [req.params.id, ...cols.map((k) => f[k])]);
+      if (!up.rowCount) throw new HttpError(404, 'not_found');
+      await saveEventRelations(c, req.params.id, req.body, f.published);
+    });
+    const { rows } = await pool.query(`${eventSelect} WHERE e.id=$1`, [req.params.id]);
+    res.json(rows[0]);
+  })
+);
+api.delete(
+  '/events/:id',
+  requireAuth,
+  wrap(async (req, res) => {
+    await pool.query('DELETE FROM events WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+    removeDeletedObjects();
+  })
+);
+
+api.get(
+  '/stats',
+  requireAuth,
+  wrap(async (_req, res) => {
+    const { rows } = await pool.query(`
+      SELECT (SELECT count(*)::int FROM products) AS total,
+             (SELECT count(*)::int FROM products WHERE published AND NOT sold) AS active,
+             (SELECT count(*)::int FROM products WHERE sold) AS sold,
+             (SELECT count(*)::int FROM products WHERE NOT published) AS drafts,
+             (SELECT count(*)::int FROM messages WHERE NOT seen) AS new_messages,
+             (SELECT count(*)::int FROM orders WHERE NOT seen) AS new_orders,
+             (SELECT count(*)::int FROM orders WHERE status IN ('placed','processing')) AS open_orders,
+             (SELECT count(*)::int FROM orders WHERE payment_status='slip_uploaded' AND status<>'cancelled') AS slips_to_check,
+             (SELECT count(*)::int FROM customers) AS customers,
+             (SELECT count(*)::int FROM images WHERE product_id IS NOT NULL) AS photos,
+             pg_database_size(current_database())::float8 AS db_bytes,
+             (SELECT COALESCE(sum(size_bytes), 0)::float8 FROM (SELECT DISTINCT ON (object_key) object_key, size_bytes FROM images WHERE object_key IS NOT NULL) o) AS object_bytes`);
+    const large = storage.enabled();
+    const GB = 1073741824;
+    res.json({
+      ...rows[0],
+      largeStorage: large,
+      bytes: large ? rows[0].object_bytes : rows[0].db_bytes,
+      limitBytes: large ? (Number(process.env.STORAGE_LIMIT_GB) || 20480) * GB : GB,
+    });
+  })
+);
+
+mountShop({ app, api, pool, newId, HttpError, wrap, str, publicBase, originAllowed, sendWhatsAppAlert, inTransaction, requireAuth, requireOwner, hashPassword, checkPassword });
+
+api.use((_req, _res, next) => next(new HttpError(404, 'not_found')));
+
+/* ---------- dashboard ---------- */
+// Browsers check for a newer copy each time, so an update shows without a forced refresh.
+app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: 0 }));
+app.get(/^\/(?!api|img|public|auth).*/, (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'file_too_large' });
+  if (err.status && err.code) return res.status(err.status).json({ error: err.code, ...(err.details ? { details: err.details } : {}) });
+  if (err.status && err.status < 500) return res.status(err.status).json({ error: 'bad_request' });
+  console.error(err);
+  res.status(500).json({ error: 'server_error' });
+});
+
+/* Photos uploaded but never saved to a product are removed after a day. */
+async function cleanOrphans() {
+  await pool
+    .query(`DELETE FROM images WHERE product_id IS NULL AND event_id IS NULL AND created_at < now() - interval '1 day'
+       AND id NOT IN (SELECT avatar_id FROM members WHERE avatar_id IS NOT NULL)`)
+    .catch((e) => console.error('Cleanup failed:', e.message));
+  await removeDeletedObjects();
+}
+
+/* Removes photos from large storage once nothing uses them. Duplicated products can share a photo. */
+async function removeDeletedObjects() {
+  if (!storage.enabled()) return;
+  try {
+    const { rows } = await pool.query(
+      'SELECT object_key FROM deleted_objects d WHERE NOT EXISTS (SELECT 1 FROM images i WHERE i.object_key = d.object_key) LIMIT 200'
+    );
+    for (const { object_key: key } of rows) {
+      await storage.deleteObject(`${key}/full.webp`);
+      await storage.deleteObject(`${key}/thumb.webp`);
+      if (key.startsWith('vid/')) await storage.deleteObject(`${key}/video`);
+      await pool.query('DELETE FROM deleted_objects WHERE object_key=$1', [key]);
+    }
+    await pool.query('DELETE FROM deleted_objects d WHERE EXISTS (SELECT 1 FROM images i WHERE i.object_key = d.object_key)');
+  } catch (err) {
+    console.error('Storage cleanup failed:', err.message);
+  }
+}
+
+async function start() {
+  await migrate();
+  cleanOrphans();
+  setInterval(cleanOrphans, 6 * 3600000).unref();
+  const port = Number(process.env.PORT) || 3000;
+  app.listen(port, () => console.log(`Pryme Store running on port ${port}`));
+}
+start().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});
