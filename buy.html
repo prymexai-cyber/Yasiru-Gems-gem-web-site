@@ -13,7 +13,7 @@
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="assets/fonts/bodoni-moda-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/site.css">
+<link rel="stylesheet" href="assets/css/site.css?v=20261110c">
 </head>
 <body data-page="buy">
 <main>
@@ -35,16 +35,16 @@
   <aside class="buy-panel" id="panel" aria-live="polite">
     <h2>Your gem</h2>
     <div id="tag" class="tag-empty">No gem selected yet</div>
-    <button type="button" class="btn btn-solid hidden" id="checkoutGem">Check out this gem</button>
+    <div class="buy-actions hidden" id="buyActs"><button type="button" class="btn btn-white" id="addGem">Add to cart</button><button type="button" class="btn btn-solid" id="checkoutGem">Checkout</button></div>
     <a class="btn btn-wa is-off" id="chat" href="#" aria-disabled="true">Chat with us</a>
     <p class="hint" id="hint">Select a gem to continue.</p>
   </aside>
 </section>
 </main>
-<script src="pryme.js" defer></script>
+<script src="pryme.js?v=20261110c" defer></script>
 <script src="assets/js/gsap.min.js" defer></script>
 <script src="assets/js/ScrollTrigger.min.js" defer></script>
-<script src="assets/js/site.js" defer></script>
-<script src="assets/js/shop.js" defer></script>
+<script src="assets/js/site.js?v=20261110c" defer></script>
+<script src="assets/js/shop.js?v=20261110c" defer></script>
 </body>
 </html>
