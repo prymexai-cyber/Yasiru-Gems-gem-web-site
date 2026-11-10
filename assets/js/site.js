@@ -1,11 +1,18 @@
-/* Yasiru Gems website */
+/* Ceylon Gem Lanka website */
 (function () {
   'use strict';
   var page = document.body.dataset.page;
   var cfg = window.PRYME || {};
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   var gsap = window.gsap;
-  var FALLBACK_WA = '14028087890';
+  var BRAND = 'Ceylon Gem Lanka';
+  // Both WhatsApp numbers are shown everywhere. The first one opens when someone taps a WhatsApp button.
+  var CONTACTS = [{ num: '94711027938', label: '+94 71 102 7938' }, { num: '14028087890', label: '+1 (402) 808-7890' }];
+  // Used when the store has not entered its own bank accounts yet.
+  var DEFAULT_BANKS = [
+    { bank: 'Seylan Bank PLC', number: '0660 3337 1604 001', name: 'U.L.D.R.P Gunasinghe' },
+    { bank: 'Sampath Bank PLC', number: '110655302478', name: 'U.L.D.R.P Gunasinghe' },
+  ];
   var WA_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.600 15.100L2 22l5-1.300A10 10 0 1 0 12 2zm0 18.200a8.200 8.200 0 0 1-4.200-1.200l-.3-.2-3 .8.800-2.900-.2-.3A8.200 8.200 0 1 1 12 20.200zm4.600-6.100c-.3-.1-1.500-.7-1.700-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.200-.3.200-.5.100a6.700 6.700 0 0 1-3.300-2.900c-.3-.4.300-.4.800-1.400.1-.2 0-.3 0-.5l-.8-1.800c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.100-.7.300-.2.300-.9.900-.9 2.200s.9 2.500 1 2.700c.1.200 1.800 2.800 4.400 3.900 1.600.7 2.300.8 3.100.6.500-.1 1.500-.6 1.700-1.200.2-.6.2-1.100.1-1.200-.1-.1-.3-.2-.6-.3z"/></svg>';
   var LOGO = '<img class="logo" src="assets/logo.svg" alt="">';
 
@@ -24,24 +31,84 @@
       localStorage.setItem(key, JSON.stringify(val));
     } catch (e) { return null; }
   }
+  function money(n, cur) {
+    return (cur || 'LKR') + ' ' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+  function payPrice(p) { return p.finalPrice !== undefined && p.finalPrice !== null ? p.finalPrice : p.price; }
   function formatPrice(p) {
     if (p.price === null || p.price === undefined) return 'Ask for price';
-    try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: p.currency || 'USD', maximumFractionDigits: 0 }).format(p.price);
-    } catch (e) { return p.currency + ' ' + p.price; }
+    return money(payPrice(p), p.currency);
+  }
+  // The price with the old price struck through when there is a discount.
+  function priceHtml(p) {
+    if (p.price === null || p.price === undefined) return 'Ask for price';
+    var now = '<span class="notranslate">' + esc(money(payPrice(p), p.currency)) + '</span>';
+    if (p.discount && payPrice(p) < p.price) {
+      var off = p.discount.type === 'percent' ? p.discount.value + '% off' : 'Save ' + money(p.price - payPrice(p), p.currency);
+      return now + ' <s class="was notranslate">' + esc(money(p.price, p.currency)) + '</s> <span class="off">' + esc(off) + '</span>';
+    }
+    return now;
+  }
+  function buyable(p) { return !p.sold && p.currency === 'LKR' && p.price !== null && p.price !== undefined; }
+
+  /* ---------- cart and account ---------- */
+  var CART_KEY = 'cgl_cart_' + (cfg.key || 'local');
+  var TOKEN_KEY = 'cgl_token_' + (cfg.key || 'local');
+  function cartGet() { var c = store(CART_KEY); return Array.isArray(c) ? c : []; }
+  function cartSet(c) { store(CART_KEY, c); updateCartBadge(); }
+  function cartAdd(slug, qty, max) {
+    var c = cartGet();
+    var it = c.filter(function (x) { return x.slug === slug; })[0];
+    if (it) it.qty = Math.min(max || 1, it.qty + qty);
+    else c.push({ slug: slug, qty: Math.min(max || 1, qty) });
+    cartSet(c);
+  }
+  function cartCount() { return cartGet().reduce(function (n, i) { return n + i.qty; }, 0); }
+  function updateCartBadge() {
+    var n = cartCount();
+    $$('[data-cart-count]').forEach(function (b) { b.textContent = n; b.classList.toggle('hidden', !n); });
+  }
+  function token() { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } }
+  function setToken(t) { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (e) { /* private mode */ } }
+  // Talks to Pryme Store as the signed-in customer. Errors come back as { code, details }.
+  function shopApi(method, path, body, raw) {
+    if (!cfg.api || !cfg.key) return Promise.reject({ code: 'offline' });
+    var headers = {};
+    var t = token();
+    if (t) headers.Authorization = 'Bearer ' + t;
+    if (body !== undefined && !raw) headers['Content-Type'] = 'application/json';
+    if (raw) headers['Content-Type'] = 'application/octet-stream';
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 75000);
+    return fetch(cfg.api + '/public/v1/' + encodeURIComponent(cfg.key) + path, {
+      method: method,
+      headers: headers,
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
+      signal: ctrl.signal,
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (r.status === 401) setToken(null);
+        if (!r.ok) throw { code: data.error || (r.status === 413 ? 'file_too_large' : 'default'), details: data.details, status: r.status };
+        return data;
+      });
+    }, function () { throw { code: 'network' }; }).finally(function () { clearTimeout(timer); });
   }
   function metaLine(p) {
     return [p.type, p.carat ? p.carat + ' ct' : ''].filter(Boolean).join(', ');
   }
 
-  var waNumber = FALLBACK_WA;
-  var ngjaNo = '234533';
-  function waLink(text) { return 'https://wa.me/' + waNumber + (text ? '?text=' + encodeURIComponent(text) : ''); }
+  var waNumber = CONTACTS[0].num;
+  function waLink(text, num) { return 'https://wa.me/' + (num || waNumber) + (text ? '?text=' + encodeURIComponent(text) : ''); }
+  function numbersHtml(text) {
+    return CONTACTS.map(function (c) {
+      return '<a class="wa-num notranslate" target="_blank" rel="noopener" href="' + esc(waLink(text, c.num)) + '">' + esc(c.label) + '</a>';
+    }).join(' <span class="sep">/</span> ');
+  }
   function gemUrl(p) { return 'gem.html?gem=' + encodeURIComponent(p.slug); }
   function gemMessage(p) {
     var abs = new URL(gemUrl(p), location.href).href;
     var bits = [p.name, metaLine(p)].filter(Boolean).join(' - ');
-    return 'Hello Yasiru Gems, I would like to buy this gem:\n' + bits + '\n' + abs;
+    return 'Hello Ceylon Gem Lanka, I would like to buy this gem:\n' + bits + '\n' + abs;
   }
   function wireWa() {
     $$('[data-wa]').forEach(function (a) {
@@ -50,8 +117,71 @@
       a.rel = 'noopener';
     });
     $$('[data-phone]').forEach(function (a) { a.href = waLink(); a.target = '_blank'; a.rel = 'noopener'; });
+    $$('[data-wa-num]').forEach(function (a) { var c = CONTACTS[+a.dataset.waNum]; a.href = waLink(a.dataset.text || '', c.num); a.target = '_blank'; a.rel = 'noopener'; });
+    $$('[data-numbers]').forEach(function (n) { n.innerHTML = numbersHtml(n.dataset.numbers || ''); });
     var f = $('.wa-float');
-    if (f) f.href = waLink('Hello Yasiru Gems, I have a question.');
+    if (f) f.href = waLink('Hello Ceylon Gem Lanka, I have a question.');
+  }
+
+  /* ---------- translation ---------- */
+  // Google's website translator. A visitor whose browser uses another language sees the site in it straight away.
+  var LANGS = [['en', 'English'], ['si', 'සිංහල'], ['ta', 'தமிழ்'], ['zh-CN', '中文 (简体)'], ['zh-TW', '中文 (繁體)'], ['ja', '日本語'], ['ko', '한국어'], ['th', 'ไทย'], ['hi', 'हिन्दी'], ['ar', 'العربية'], ['ru', 'Русский'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['nl', 'Nederlands'], ['tr', 'Türkçe'], ['iw', 'עברית'], ['ms', 'Bahasa Melayu'], ['id', 'Bahasa Indonesia'], ['vi', 'Tiếng Việt'], ['pl', 'Polski'], ['uk', 'Українська'], ['sv', 'Svenska'], ['fa', 'فارسی'], ['bn', 'বাংলা'], ['ur', 'اردو']];
+  function mapLang(tag) {
+    var t = String(tag || 'en').toLowerCase();
+    if (/^zh-(tw|hk|mo)|^zh-hant/.test(t)) return 'zh-TW';
+    if (/^zh/.test(t)) return 'zh-CN';
+    var base = t.split('-')[0];
+    return { he: 'iw', nb: 'no', nn: 'no', fil: 'tl', jv: 'jw' }[base] || base;
+  }
+  function cookieLang() {
+    var m = /(?:^|;\s*)googtrans=\/[^/;]*\/([^;]+)/.exec(document.cookie);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function writeLang(code) {
+    var expire = 'expires=Thu, 01 Jan 1970 00:00:00 GMT;';
+    var hosts = ['', '; domain=' + location.hostname];
+    hosts.forEach(function (h) { document.cookie = 'googtrans=; path=/; ' + expire + h; });
+    if (code && code !== 'en') document.cookie = 'googtrans=/en/' + code + '; path=/';
+  }
+  function translation(header) {
+    var chosen = store('cgl_lang');
+    var current = cookieLang();
+    if (!chosen && !current) {
+      var auto = mapLang((navigator.languages && navigator.languages[0]) || navigator.language);
+      if (auto !== 'en') { writeLang(auto); current = auto; }
+    }
+    current = current || 'en';
+    var btn = $('.lang-btn', header), menu = $('.lang-menu', header);
+    $('.lang-code', btn).textContent = current.split('-')[0].toUpperCase();
+    menu.innerHTML = '<p>Choose a language</p><div class="lang-list">' + LANGS.map(function (l) {
+      return '<button type="button" data-lang="' + l[0] + '"' + (l[0] === current ? ' aria-current="true"' : '') + '>' + esc(l[1]) + '</button>';
+    }).join('') + '</div><p class="lang-note">Translated automatically by Google. Prices and order details stay the same.</p>';
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = menu.classList.toggle('hidden') === false;
+      btn.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', function (e) { if (!menu.contains(e.target)) { menu.classList.add('hidden'); btn.setAttribute('aria-expanded', 'false'); } });
+    $$('[data-lang]', menu).forEach(function (b) {
+      b.addEventListener('click', function () {
+        store('cgl_lang', b.dataset.lang);
+        writeLang(b.dataset.lang);
+        location.reload();
+      });
+    });
+    if (current !== 'en') {
+      var holder = document.createElement('div');
+      holder.id = 'google_translate_element';
+      holder.hidden = true;
+      document.body.append(holder);
+      window.cglTranslateInit = function () {
+        new window.google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+      };
+      var sc = document.createElement('script');
+      sc.src = 'https://translate.google.com/translate_a/element.js?cb=cglTranslateInit';
+      sc.async = true;
+      document.head.append(sc);
+    }
   }
 
   /* ---------- shared layout ---------- */
@@ -69,15 +199,28 @@
     document.body.prepend(bg);
 
     var links = [['index.html', 'Home', 'home'], ['about.html', 'About us', 'about'], ['gems.html', 'Our Gems', 'gems'], ['nature.html', 'Our Nature', 'nature'], ['events.html', 'Gem Events', 'events'], ['contact.html', 'Contact us', 'contact']];
+    var ICONS = {
+      globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>',
+      user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.500 4-7 8-7s7.200 2.500 8 7"/></svg>',
+      bag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
+    };
     var header = document.createElement('header');
     header.className = 'top';
     header.innerHTML =
-      '<div class="bar"><a class="brand" href="index.html">' + LOGO + 'Yasiru Gems</a>' +
+      '<div class="strip"><span class="strip-nums">WhatsApp <span data-numbers></span></span><span class="strip-delivery">Island-wide delivery in <b data-days>4</b> working days</span><a href="track.html">Track your order</a></div>' +
+      '<div class="bar"><a class="brand notranslate" href="index.html">' + LOGO + BRAND + '</a>' +
       '<nav class="nav" id="nav" aria-label="Main">' +
       links.map(function (l) { return '<a href="' + l[0] + '"' + (l[2] === page ? ' aria-current="page"' : '') + '>' + l[1] + '</a>'; }).join('') +
+      '<a class="nav-extra" href="track.html">Track your order</a><a class="nav-extra" href="account.html">My account</a>' +
       '<a class="buy-link" href="buy.html"' + (page === 'buy' ? ' aria-current="page"' : '') + '>Buy now</a></nav>' +
-      '<button class="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M4 16h16"/></svg></button></div>';
+      '<div class="tools"><button class="tool lang-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Language">' + ICONS.globe + '<span class="lang-code notranslate"></span></button>' +
+      '<a class="tool" href="' + (token() ? 'account.html' : 'login.html') + '" aria-label="My account">' + ICONS.user + '</a>' +
+      '<a class="tool" href="cart.html" aria-label="Cart">' + ICONS.bag + '<span class="cart-count hidden notranslate" data-cart-count></span></a>' +
+      '<button class="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M4 16h16"/></svg></button></div></div>' +
+      '<div class="lang-menu hidden notranslate" role="menu" aria-label="Choose a language"></div>';
     document.body.prepend(header);
+    translation(header);
+    updateCartBadge();
 
     var btn = $('.menu-btn', header), nav = $('.nav', header);
     function setMenu(open) {
@@ -86,7 +229,7 @@
       btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
       updateHeader();
     }
-    btn.addEventListener('click', function () { setMenu(!nav.classList.contains('open')); });
+    btn.addEventListener('click', function (e) { e.stopPropagation(); setMenu(!nav.classList.contains('open')); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setMenu(false); });
     document.addEventListener('click', function (e) { if (!header.contains(e.target)) setMenu(false); });
 
@@ -102,11 +245,13 @@
     var foot = document.createElement('footer');
     foot.className = 'foot';
     foot.innerHTML =
-      '<div class="wrap"><div class="foot-grid"><div><a class="brand" href="index.html">' + LOGO + 'Yasiru Gems</a>' +
-      '<p>Genuine, quality gemstones at low prices. NGJA registered, with more than 25 years of experience.</p><p class="foot-ngja"><img class="ngja-logo" src="assets/ngja-logo.png" alt="National Gem &amp; Jewellery Authority logo" width="46" height="46" loading="lazy"><span>Gem dealer: U. L. D. R. P GUNASINGHE<br>NGJA licence number: <span data-ngja-no>234533</span></span></p></div>' +
-      '<div><h2>Pages</h2><ul><li><a href="index.html">Home</a></li><li><a href="about.html">About us</a></li><li><a href="gems.html">Our Gems</a></li><li><a href="nature.html">Our Nature</a></li><li><a href="events.html">Gem Events</a></li><li><a href="contact.html">Contact us</a></li><li><a href="buy.html">Buy now</a></li></ul></div>' +
-      '<div><h2>WhatsApp</h2><ul><li><a data-phone href="#">+1 (402) 808-7890</a></li></ul></div></div>' +
-      '<p class="copy">&copy; ' + new Date().getFullYear() + ' Yasiru Gems. Developed by Pryme X AI</p></div>';
+      '<div class="wrap"><div class="foot-grid"><div><a class="brand notranslate" href="index.html">' + LOGO + BRAND + '</a>' +
+      '<p>Genuine, quality gemstones at low prices.</p><p class="foot-ngja"><img class="ngja-logo" src="assets/ngja-logo.png" alt="National Gem &amp; Jewellery Authority logo" width="46" height="46" loading="lazy"><span>NGJA licensed gem dealer with more than 25 years of experience</span></p>' +
+      '<p class="foot-delivery">Delivery within Sri Lanka only, to your door within <b data-days>4</b> working days. Delivery charge <b class="notranslate" data-fee>LKR 450</b>.</p></div>' +
+      '<div><h2>Shop</h2><ul><li><a href="gems.html">Our Gems</a></li><li><a href="buy.html">Buy now</a></li><li><a href="cart.html">Cart</a></li><li><a href="account.html">My account</a></li><li><a href="track.html">Track your order</a></li></ul></div>' +
+      '<div><h2>About</h2><ul><li><a href="about.html">About us</a></li><li><a href="nature.html">Our Nature</a></li><li><a href="events.html">Gem Events</a></li><li><a href="contact.html">Contact us</a></li><li><a href="privacy.html">Privacy Policy</a></li><li><a href="terms.html">Terms &amp; Conditions</a></li></ul></div>' +
+      '<div><h2>WhatsApp</h2><ul class="foot-nums"><li><a data-wa-num="0" href="#" class="notranslate">+94 71 102 7938</a></li><li><a data-wa-num="1" href="#" class="notranslate">+1 (402) 808-7890</a></li></ul><p class="pay-note">We accept bank transfers to Seylan Bank and Sampath Bank.</p></div></div>' +
+      '<p class="copy">&copy; ' + new Date().getFullYear() + ' <span class="notranslate">' + BRAND + '</span>. Developed by <span class="notranslate">Pryme X AI</span></p></div>';
     document.body.append(foot);
 
     var wa = document.createElement('a');
@@ -152,6 +297,14 @@
     gemsband: [pixabay(PB + '2024/12/13/246461')],
     nature: [pixabay(PB + '2025/12/17/322546')],
     events: [pixabay(PB + '2025/04/16/272321')],
+    login: [pixabay(PB + '2023/10/25/186465-878145163')],
+    account: [pixabay(PB + '2024/10/10/235737')],
+    cart: [pixabay(PB + '2025/07/03/289235')],
+    checkout: [pixabay(PB + '2023/09/29/182813-869773956')],
+    order: [pixabay(PB + '2025/07/31/294529')],
+    track: [pixabay(PB + '2025/12/17/322549')],
+    privacy: [pixabay(PB + '2025/09/04/301646')],
+    terms: [pixabay(PB + '2023/08/16/176299-855206492')],
   };
   function sourcesFor(name, i, list) {
     // A file saved in assets/video always wins, so no code edit is needed to use your own clip.
@@ -291,25 +444,53 @@
       .catch(function () { if (!cached) onData(null, true); })
       .finally(function () { clearTimeout(timer); });
   }
+  var siteInfo = { deliveryFee: 450, deliveryDays: 4, bankAccounts: DEFAULT_BANKS, cardPayments: false };
   function applySite(data) {
     if (!data || !data.site) return;
-    if (data.site.whatsapp) { waNumber = data.site.whatsapp; wireWa(); }
+    var st = data.site;
+    if (st.deliveryFee !== undefined) siteInfo.deliveryFee = st.deliveryFee;
+    if (st.deliveryDays) siteInfo.deliveryDays = st.deliveryDays;
+    if (st.bankAccounts && st.bankAccounts.length) siteInfo.bankAccounts = st.bankAccounts;
+    siteInfo.cardPayments = Boolean(st.cardPayments);
+    $$('[data-days]').forEach(function (n) { n.textContent = siteInfo.deliveryDays; });
+    $$('[data-fee]').forEach(function (n) { n.textContent = money(siteInfo.deliveryFee); });
   }
   function skeletons(n) { var s = ''; for (var i = 0; i < n; i++) s += '<div class="skeleton"></div>'; return s; }
   function noteHtml(title, text) {
-    return '<div class="note"><h3>' + esc(title) + '</h3><p>' + esc(text) + '</p><a class="btn btn-solid" data-wa="Hello Yasiru Gems, which gemstones do you have available?" href="#">Chat with us</a></div>';
+    return '<div class="note"><h3>' + esc(title) + '</h3><p>' + esc(text) + '</p><a class="btn btn-solid" data-wa="Hello Ceylon Gem Lanka, which gemstones do you have available?" href="#">Chat with us</a></div>';
   }
   function soldBand(large) { return '<span class="soldband' + (large ? ' large' : '') + '">Sold out</span>'; }
 
   function cardHtml(p) {
     var img = p.images[0];
+    var cart = buyable(p) ? '<button type="button" class="card-cart" data-add="' + esc(p.slug) + '" data-max="' + (p.stock || 1) + '">Add to cart</button>' : '';
     return '<article class="gem-card' + (p.sold ? ' is-sold' : '') + '"><a class="gem-link" href="' + esc(gemUrl(p)) + '">' +
       '<div class="gem-pic">' + (img ? '<img src="' + esc(img.thumb) + '" alt="' + esc(p.name) + '" loading="lazy" decoding="async" draggable="false"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') + (p.sold ? soldBand() : '') + '</div>' +
-      '<div class="gem-info"><h3>' + esc(p.name) + '</h3><div class="gem-meta">' + esc(metaLine(p)) + '</div><div class="gem-price">' + (p.sold ? 'Sold out' : esc(formatPrice(p))) + '</div></div></a>' +
-      '<div class="gem-foot">' + (p.sold
-        ? '<a class="card-wa off" target="_blank" rel="noopener" href="' + esc(waLink('Hello Yasiru Gems, ' + p.name + ' is sold out. Do you have a similar stone?')) + '">Ask for a similar stone</a>'
-        : '<a class="card-wa" target="_blank" rel="noopener" href="' + esc(waLink(gemMessage(p))) + '">' + WA_ICON + 'WhatsApp</a>') +
+      '<div class="gem-info"><h3>' + esc(p.name) + '</h3><div class="gem-meta">' + esc(metaLine(p)) + '</div><div class="gem-price">' + (p.sold ? 'Sold out' : priceHtml(p)) + '</div></div></a>' +
+      (p.discount && !p.sold ? '<span class="sale-tag">Sale</span>' : '') +
+      '<div class="gem-foot' + (cart ? ' two' : '') + '">' + cart + (p.sold
+        ? '<a class="card-wa off" target="_blank" rel="noopener" href="' + esc(waLink('Hello Ceylon Gem Lanka, ' + p.name + ' is sold out. Do you have a similar stone?')) + '">Ask for a similar stone</a>'
+        : '<a class="card-wa" target="_blank" rel="noopener" href="' + esc(waLink(gemMessage(p))) + '" aria-label="Ask about ' + esc(p.name) + ' on WhatsApp">' + WA_ICON + (cart ? '' : 'WhatsApp') + '</a>') +
       '</div></article>';
+  }
+  // Add-to-cart buttons anywhere on the page.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-add]');
+    if (!b) return;
+    e.preventDefault();
+    cartAdd(b.dataset.add, 1, +b.dataset.max || 1);
+    b.textContent = 'Added';
+    b.classList.add('done');
+    toast('Added to your cart', 'cart.html', 'View cart');
+    setTimeout(function () { b.textContent = 'Add to cart'; b.classList.remove('done'); }, 1600);
+  });
+  function toast(text, href, label) {
+    var t = document.createElement('div');
+    t.className = 'site-toast';
+    t.setAttribute('role', 'status');
+    t.innerHTML = '<span>' + esc(text) + '</span>' + (href ? '<a href="' + esc(href) + '">' + esc(label) + '</a>' : '');
+    document.body.append(t);
+    setTimeout(function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 400); }, 3200);
   }
   function animateIn(nodes) {
     wireGlass(nodes);
@@ -412,7 +593,7 @@
         function failed() {
           sendBtn.disabled = false;
           show('Your message could not be sent. Please send it on WhatsApp instead.');
-          fallback.href = waLink('Hello Yasiru Gems, my name is ' + body.name + '.\n' + body.message);
+          fallback.href = waLink('Hello Ceylon Gem Lanka, my name is ' + body.name + '.\n' + body.message);
           fallback.classList.remove('hidden');
         }
         fallback.classList.add('hidden');
@@ -526,6 +707,7 @@
         if (!p) {
           tag.className = 'tag-empty';
           tag.textContent = 'No gem selected yet';
+          if ($('#checkoutGem')) $('#checkoutGem').classList.add('hidden');
           chat.classList.add('is-off');
           chat.setAttribute('aria-disabled', 'true');
           chat.removeAttribute('target');
@@ -545,6 +727,8 @@
         chat.rel = 'noopener';
         chat.innerHTML = WA_ICON + 'Chat with us';
         hint.textContent = 'WhatsApp opens with this gem in your message.';
+        var co = $('#checkoutGem');
+        if (co) { co.classList.toggle('hidden', !buyable(p)); co.dataset.slug = p.slug; }
         if (gsap && !reduce) gsap.from(tag, { scale: .94, opacity: 0, duration: .45, ease: 'back.out(1.6)' });
         if (scroll && matchMedia('(max-width: 960px)').matches) $('#panel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
@@ -559,7 +743,7 @@
           var img = p.images[0];
           return '<button type="button" class="pick" role="radio" data-slug="' + esc(p.slug) + '" aria-checked="' + !!(selected && selected.slug === p.slug) + '"' + (p.sold ? ' aria-disabled="true"' : '') + '>' +
             '<span class="gem-pic" style="display:block">' + (img ? '<img src="' + esc(img.thumb) + '" alt="" loading="lazy"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') + (p.sold ? soldBand() : '') + '<span class="check"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span></span>' +
-            '<strong>' + esc(p.name) + '</strong><small>' + esc(p.sold ? 'Sold out' : formatPrice(p)) + '</small></button>';
+            '<strong>' + esc(p.name) + '</strong><small class="notranslate">' + esc(p.sold ? 'Sold out' : formatPrice(p)) + '</small></button>';
         }).join('');
         $$('.pick', pick).forEach(function (n) {
           n.addEventListener('click', function () {
@@ -570,6 +754,14 @@
         animateIn($$('.pick', pick));
       }
       chat.addEventListener('click', function (e) { if (!selected) e.preventDefault(); });
+      var co = $('#checkoutGem');
+      if (co) co.addEventListener('click', function () {
+        if (!selected) return;
+        var c = cartGet().filter(function (x) { return x.slug !== selected.slug; });
+        c.push({ slug: selected.slug, qty: 1 });
+        cartSet(c);
+        location.href = 'checkout.html';
+      });
       selectGem(null);
       catalog(function (data, final) {
         applySite(data);
@@ -618,45 +810,72 @@
 
   /* ---------- gem detail ---------- */
   function renderDetail(p, box) {
-    document.title = p.name + ' | Yasiru Gems';
-    var imgs = p.images;
-    var first = imgs[0];
+    document.title = p.name + ' | ' + BRAND;
+    var media = p.media && p.media.length ? p.media : p.images.map(function (m) { return { type: 'image', full: m.full, thumb: m.thumb }; });
+    var imgs = media.filter(function (m) { return m.type !== 'video'; });
+    var first = media[0];
     var specs = p.specs.map(function (x) { return [x.label, x.value]; });
+    var max = p.stock || 1;
+    var actions;
+    if (p.sold) {
+      actions = '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink('Hello ' + BRAND + ', ' + p.name + ' is sold out. Do you have a similar stone?')) + '">' + WA_ICON + 'Ask for a similar stone</a>';
+    } else if (buyable(p)) {
+      actions = (max > 1 ? '<label class="qty">Quantity <input type="number" id="qty" min="1" max="' + max + '" value="1" inputmode="numeric"></label>' : '') +
+        '<div class="buy-actions"><button type="button" class="btn btn-solid" id="addCart">Add to cart</button><button type="button" class="btn btn-white" id="buyNow">Buy now</button></div>' +
+        '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink(gemMessage(p))) + '">' + WA_ICON + 'Chat with us</a>';
+    } else {
+      actions = '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink(gemMessage(p))) + '">' + WA_ICON + 'Contact us to buy</a>';
+    }
     box.style.display = '';
     box.innerHTML =
-      '<div class="gallery"><button type="button" class="stage" id="stage" aria-label="Open photo to zoom">' +
-      (first ? '<img id="mainImg" src="' + esc(first.thumb) + '" alt="' + esc(p.name) + '"' + (p.sold ? ' class="sold-img"' : '') + '>' : '') +
+      '<div class="gallery"><div class="stage-wrap"><button type="button" class="stage" id="stage" aria-label="Open photo to zoom">' +
+      '<img id="mainImg" alt="' + esc(p.name) + '"' + (p.sold ? ' class="sold-img"' : '') + '>' +
       (p.sold ? soldBand(true) : '') + '<span class="zoom-hint">Tap to zoom</span><span class="lens" id="lens"></span></button>' +
-      (imgs.length > 1 ? '<div class="thumbs">' + imgs.map(function (im, i) {
-        return '<button type="button" class="thumb" data-i="' + i + '" aria-label="Photo ' + (i + 1) + ' of ' + imgs.length + '" aria-current="' + (i === 0) + '"><img src="' + esc(im.thumb) + '" alt=""></button>';
+      '<video id="mainVid" class="stage-video hidden" controls playsinline preload="metadata"></video></div>' +
+      (media.length > 1 ? '<div class="thumbs">' + media.map(function (m, i) {
+        return '<button type="button" class="thumb' + (m.type === 'video' ? ' is-video' : '') + '" data-i="' + i + '" aria-label="' + (m.type === 'video' ? 'Video' : 'Photo') + ' ' + (i + 1) + ' of ' + media.length + '" aria-current="' + (i === 0) + '">' +
+          (m.type === 'video' ? '<video src="' + esc(m.full) + '#t=0.5" muted playsinline preload="metadata"></video><span class="play" aria-hidden="true">&#9654;</span>' : '<img src="' + esc(m.thumb) + '" alt="">') + '</button>';
       }).join('') + '</div>' : '') + '</div>' +
       '<div class="buy-box" data-glass>' + (p.type ? '<div class="d-type">' + esc(p.type) + '</div>' : '') + '<h1>' + esc(p.name) + '</h1>' +
-      (p.sold ? '<div class="d-state">This stone is sold out</div>' : '<div class="d-price">' + esc(formatPrice(p)) + '</div>') +
-      (p.sold
-        ? '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink('Hello Yasiru Gems, ' + p.name + ' is sold out. Do you have a similar stone?')) + '">' + WA_ICON + 'Ask for a similar stone</a>'
-        : '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(waLink(gemMessage(p))) + '">' + WA_ICON + 'Chat with us</a><a class="btn btn-solid" href="buy.html?gem=' + encodeURIComponent(p.slug) + '">Buy now</a>') +
+      (p.sold ? '<div class="d-state">This stone is sold out</div>' : '<div class="d-price">' + priceHtml(p) + '</div>') +
+      actions +
+      (buyable(p) ? '<ul class="d-points"><li>Delivered to your door in Sri Lanka within <b data-days>' + siteInfo.deliveryDays + '</b> working days</li><li>Delivery charge <b class="notranslate" data-fee>' + esc(money(siteInfo.deliveryFee)) + '</b></li><li>Pay by bank transfer' + (siteInfo.cardPayments ? ' or card' : '') + '</li></ul>' : '') +
       (specs.length ? '<dl class="specs">' + specs.map(function (s) { return '<div><dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd></div>'; }).join('') + '</dl>' : '') +
       (p.description ? '<p class="d-desc">' + esc(p.description) + '</p>' : '') +
-      '<p class="d-trust">NGJA registered gem dealer: U. L. D. R. P GUNASINGHE. Licence number <span data-ngja-no>' + esc(ngjaNo) + '</span>. More than 25 years of experience.</p></div>';
+      '<p class="d-trust">NGJA licensed gem dealer with more than 25 years of experience.</p></div>';
 
-    var current = 0, main = $('#mainImg'), stage = $('#stage'), lens = $('#lens');
+    var current = 0, main = $('#mainImg'), vid = $('#mainVid'), stage = $('#stage'), lens = $('#lens');
+    var photoIndex = 0;
     // Show the small photo at once, then swap in the sharp one when it has loaded.
-    function showPhoto(i) {
-      main.src = imgs[i].thumb;
+    function showItem(i) {
+      var m = media[i];
+      current = i;
+      if (!m) return;
+      if (m.type === 'video') {
+        stage.classList.add('hidden');
+        vid.classList.remove('hidden');
+        vid.src = m.full;
+        vid.play().catch(function () {});
+        return;
+      }
+      vid.pause();
+      vid.classList.add('hidden');
+      stage.classList.remove('hidden');
+      photoIndex = imgs.indexOf(m);
+      main.src = m.thumb;
       var sharp = new Image();
       sharp.onload = function () { if (current === i) main.src = sharp.src; };
-      sharp.src = imgs[i].full;
+      sharp.src = m.full;
     }
-    if (first) showPhoto(0);
+    if (first) showItem(0);
     $$('.thumb', box).forEach(function (t) {
       t.addEventListener('click', function () {
-        current = +t.dataset.i;
-        showPhoto(current);
+        showItem(+t.dataset.i);
         $$('.thumb', box).forEach(function (o) { o.setAttribute('aria-current', String(o === t)); });
       });
     });
-    if (first) {
-      stage.addEventListener('click', function () { openViewer(imgs, current, p.name); });
+    if (imgs.length) {
+      stage.addEventListener('click', function () { openViewer(imgs, photoIndex, p.name); });
       if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
         $('.zoom-hint', box).textContent = 'Hover to magnify, click for full screen';
         stage.addEventListener('pointermove', function (e) {
@@ -671,13 +890,27 @@
           var z = 2.8, half = 115;
           lens.style.left = x - half + 'px';
           lens.style.top = y - half + 'px';
-          lens.style.backgroundImage = 'url("' + imgs[current].full.replace(/"/g, '%22') + '")';
+          lens.style.backgroundImage = 'url("' + imgs[photoIndex].full.replace(/"/g, '%22') + '")';
           lens.style.backgroundSize = dw * z + 'px ' + dh * z + 'px';
           lens.style.backgroundPosition = -((x - ox) * z - half) + 'px ' + -((y - oy) * z - half) + 'px';
         });
         stage.addEventListener('pointerleave', function () { lens.style.opacity = 0; });
       }
     }
+    var qtyBox = $('#qty', box);
+    function chosenQty() { return Math.min(max, Math.max(1, parseInt(qtyBox ? qtyBox.value : 1, 10) || 1)); }
+    var add = $('#addCart', box);
+    if (add) add.addEventListener('click', function () {
+      cartAdd(p.slug, chosenQty(), max);
+      toast('Added to your cart', 'cart.html', 'View cart');
+    });
+    var buyNow = $('#buyNow', box);
+    if (buyNow) buyNow.addEventListener('click', function () {
+      var c = cartGet().filter(function (x) { return x.slug !== p.slug; });
+      c.push({ slug: p.slug, qty: chosenQty() });
+      cartSet(c);
+      location.href = 'checkout.html';
+    });
     wireGlass($$('[data-glass]', box));
     if (gsap && !reduce) gsap.from(box.children, { y: 14, opacity: 0, duration: .4, stagger: .06, ease: 'power2.out', clearProps: 'transform,opacity' });
   }
@@ -849,6 +1082,14 @@
     });
     wireGlass($$('.glass-card, .glass-note, .cred, .buy-panel'));
   }
+  /* ---------- shared with shop.js ---------- */
+  window.CGL = {
+    BRAND: BRAND, CONTACTS: CONTACTS, cfg: cfg, pages: pages, $: $, $$: $$, esc: esc, qs: qs, store: store,
+    money: money, payPrice: payPrice, priceHtml: priceHtml, buyable: buyable, catalog: catalog, applySite: applySite, siteInfo: siteInfo,
+    cartGet: cartGet, cartSet: cartSet, updateCartBadge: updateCartBadge, token: token, setToken: setToken, shopApi: shopApi,
+    waLink: waLink, numbersHtml: numbersHtml, wireWa: wireWa, noteHtml: noteHtml, skeletons: skeletons, toast: toast, wireGlass: wireGlass, gemUrl: gemUrl,
+  };
+
   /* ---------- start ---------- */
   function start() {
     layout();
@@ -862,5 +1103,6 @@
     s.src = 'assets/js/demo.js';
     s.onload = s.onerror = start;
     document.head.append(s);
-  } else start();
+  } else if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
