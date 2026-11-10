@@ -444,7 +444,7 @@
       .catch(function () { if (!cached) onData(null, true); })
       .finally(function () { clearTimeout(timer); });
   }
-  var siteInfo = { deliveryFee: 450, deliveryDays: 4, bankAccounts: DEFAULT_BANKS, cardPayments: false };
+  var siteInfo = { deliveryFee: 450, deliveryDays: 4, bankAccounts: DEFAULT_BANKS, cardPayments: false, cardMode: '' };
   function applySite(data) {
     if (!data || !data.site) return;
     var st = data.site;
@@ -452,6 +452,7 @@
     if (st.deliveryDays) siteInfo.deliveryDays = st.deliveryDays;
     if (st.bankAccounts && st.bankAccounts.length) siteInfo.bankAccounts = st.bankAccounts;
     siteInfo.cardPayments = Boolean(st.cardPayments);
+    siteInfo.cardMode = st.cardMode || (st.cardPayments ? 'payhere' : '');
     $$('[data-days]').forEach(function (n) { n.textContent = siteInfo.deliveryDays; });
     $$('[data-fee]').forEach(function (n) { n.textContent = money(siteInfo.deliveryFee); });
   }
