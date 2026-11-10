@@ -1,664 +1,436 @@
-'use strict';
-// Customer accounts, orders, payment slips, order tracking and card payments for connected websites,
-// plus the dashboard views of orders and customers.
-const crypto = require('crypto');
-const express = require('express');
-const sharp = require('sharp');
-const { rateLimit } = require('express-rate-limit');
-const { finalPrice } = require('./pricing');
+/* Ceylon Gem Lanka shop: cart, sign in, checkout, payment slips, order tracking and My account */
+(function () {
+  'use strict';
+  var C = window.CGL;
+  if (!C) return;
+  var $ = C.$, $$ = C.$$, esc = C.esc, money = C.money, shopApi = C.shopApi;
+  var DISTRICTS = ['Ampara', 'Anuradhapura', 'Badulla', 'Batticaloa', 'Colombo', 'Galle', 'Gampaha', 'Hambantota', 'Jaffna', 'Kalutara', 'Kandy', 'Kegalle', 'Kilinochchi', 'Kurunegala', 'Mannar', 'Matale', 'Matara', 'Monaragala', 'Mullaitivu', 'Nuwara Eliya', 'Polonnaruwa', 'Puttalam', 'Ratnapura', 'Trincomalee', 'Vavuniya'];
+  var ERRORS = {
+    wrong_login: 'The email or password is not correct.',
+    email_taken: 'An account with this email already exists. Sign in instead.',
+    bad_email: 'Enter a valid email address.',
+    short_password: 'Use a password with at least 8 characters.',
+    wrong_password: 'Your current password is not correct.',
+    name_required: 'Enter your full name.',
+    phone_required: 'Enter a phone number we can reach you on, with at least 9 digits.',
+    address_required: 'Enter your delivery address and city.',
+    district_required: 'Choose your district.',
+    terms_required: 'Please accept the Terms & Conditions to place your order.',
+    item_unavailable: 'One of the stones in your cart is no longer available. It has been removed from your cart.',
+    empty_cart: 'Your cart is empty.',
+    card_unavailable: 'Card payment is not available yet. Please pay by bank transfer.',
+    order_not_found: 'We could not find an order with that number and phone number. Check both and try again.',
+    too_many: 'Too many tries. Please wait a few minutes and try again.',
+    bad_file: 'This file could not be read. Upload a photo (JPG or PNG) or a PDF of your slip.',
+    file_too_large: 'This file is too large. The limit is 12 MB.',
+    too_many_slips: 'This order already has the most slips we can take. Send any more on WhatsApp.',
+    order_cancelled: 'This order has been cancelled. Contact us on WhatsApp if this is a mistake.',
+    already_paid: 'This order is already paid.',
+    login_required: 'Please sign in again.',
+    network: 'We could not reach our server. Check your internet connection and try again. The first try can take up to a minute.',
+    offline: 'The shop is not connected right now. Please order on WhatsApp.',
+    default: 'Something went wrong. Please try again, or order on WhatsApp.',
+  };
+  function errText(e) { return ERRORS[(e && e.code) || 'default'] || ERRORS.default; }
+  function showError(box, e) { box.textContent = typeof e === 'string' ? e : errText(e); box.classList.remove('hidden'); box.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  function here() { return location.pathname.split('/').pop() + location.search; }
+  function requireLogin() {
+    if (C.token()) return true;
+    location.replace('login.html?next=' + encodeURIComponent(here()));
+    return false;
+  }
+  function onLoggedOut(e) {
+    if (e && e.status === 401) { location.replace('login.html?next=' + encodeURIComponent(here())); return true; }
+    return false;
+  }
+  function when(d) { return new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+  function statusPill(o) { return '<span class="pill st-' + esc(o.status) + '">' + esc(o.statusText) + '</span>'; }
+  function delivery() {
+    return '<div class="notice"><strong>We deliver only within Sri Lanka.</strong> Delivery charge <b class="notranslate" data-fee>' + esc(money(C.siteInfo.deliveryFee)) + '</b>, to your door within <b data-days>' + C.siteInfo.deliveryDays + '</b> working days after your payment is confirmed. ' +
+      'Living outside Sri Lanka? Before you order, contact us on WhatsApp to ask whether we can deliver to your country: <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', do you deliver to my country?') + '</span></div>';
+  }
+  function loading(box) { box.innerHTML = '<div class="skeleton" style="aspect-ratio:auto;height:220px"></div>'; }
 
-const DISTRICTS = ['Ampara', 'Anuradhapura', 'Badulla', 'Batticaloa', 'Colombo', 'Galle', 'Gampaha', 'Hambantota', 'Jaffna', 'Kalutara', 'Kandy', 'Kegalle', 'Kilinochchi', 'Kurunegala', 'Mannar', 'Matale', 'Matara', 'Monaragala', 'Mullaitivu', 'Nuwara Eliya', 'Polonnaruwa', 'Puttalam', 'Ratnapura', 'Trincomalee', 'Vavuniya'];
-const STATUSES = ['placed', 'processing', 'shipped', 'delivered', 'cancelled'];
-const PAYMENT_STATUSES = ['pending', 'slip_uploaded', 'paid', 'failed'];
-const STATUS_TEXT = {
-  placed: 'Order placed',
-  processing: 'Order being processed',
-  shipped: 'Handed over for delivery',
-  delivered: 'Delivered',
-  cancelled: 'Order cancelled',
-};
-const PAYMENT_TEXT = { pending: 'Waiting for payment', slip_uploaded: 'Payment slip received', paid: 'Payment confirmed', failed: 'Payment failed' };
-const MAX_SLIPS = 10;
-
-const limiter = (minutes, limit) =>
-  rateLimit({ windowMs: minutes * 60000, limit, standardHeaders: true, legacyHeaders: false, message: { error: 'too_many' } });
-const tokenHash = (t) => crypto.createHash('sha256').update(t).digest('hex');
-const md5u = (s) => crypto.createHash('md5').update(s).digest('hex').toUpperCase();
-const digits = (v) => String(v || '').replace(/\D/g, '');
-const lastNine = (v) => digits(v).slice(-9);
-const money = (n) => Math.round(Number(n) * 100) / 100;
-
-module.exports = function mountShop(d) {
-  const { app, api, pool, newId, HttpError, wrap, str, publicBase, originAllowed, sendWhatsAppAlert, inTransaction, requireAuth, requireOwner, hashPassword, checkPassword } = d;
-  const json = express.json({ limit: '32kb' });
-  const payhereReady = (site) => Boolean(site.payhere_merchant_id && site.payhere_secret);
-  const imgUrl = (base, id, size = 'thumb') => (id ? `${base}/img/${id}/${size}` : null);
-
-  /* ---------- website side ---------- */
-  const loadShopSite = wrap(async (req, res, next) => {
-    const { rows } = await pool.query('SELECT * FROM sites WHERE site_key=$1', [req.params.key]);
-    const site = rows[0];
-    if (!site || !site.verified_at) throw new HttpError(403, 'site_not_verified');
-    const origin = req.get('origin');
-    res.vary('Origin');
-    if (!originAllowed(origin, site)) throw new HttpError(403, 'origin_not_allowed');
-    res.set({
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-      'Access-Control-Max-Age': '600',
+  // Matches cart lines to the latest catalogue, and drops stones that can no longer be bought.
+  function cartLines(data) {
+    var products = (data && data.products) || [];
+    var removed = [];
+    var lines = [];
+    C.cartGet().forEach(function (i) {
+      var p = products.filter(function (x) { return x.slug === i.slug; })[0];
+      if (!p || !C.buyable(p)) { removed.push(p ? p.name : 'A stone'); return; }
+      lines.push({ p: p, qty: Math.min(i.qty, p.stock || 1) });
     });
-    if (req.method === 'OPTIONS') return res.status(204).end();
-    req.site = site;
-    next();
-  });
-
-  const customerAuth = wrap(async (req, _res, next) => {
-    const m = /^Bearer ([\w-]{20,100})$/.exec(req.get('authorization') || '');
-    if (!m) throw new HttpError(401, 'login_required');
-    const { rows } = await pool.query(
-      `SELECT c.* FROM customer_sessions s JOIN customers c ON c.id = s.customer_id
-       WHERE s.token_hash=$1 AND s.expires_at > now() AND c.site_id=$2`,
-      [tokenHash(m[1]), req.site.id]
-    );
-    if (!rows[0]) throw new HttpError(401, 'login_required');
-    req.customer = rows[0];
-    req.token = m[1];
-    next();
-  });
-
-  async function startSession(customerId) {
-    const token = crypto.randomBytes(32).toString('base64url');
-    await pool.query("INSERT INTO customer_sessions (token_hash, customer_id, expires_at) VALUES ($1,$2, now() + interval '60 days')", [
-      tokenHash(token),
-      customerId,
-    ]);
-    await pool.query('DELETE FROM customer_sessions WHERE expires_at < now()').catch(() => {});
-    return token;
+    if (removed.length) C.cartSet(lines.map(function (l) { return { slug: l.p.slug, qty: l.qty }; }));
+    var subtotal = 0, original = 0;
+    lines.forEach(function (l) { subtotal += C.payPrice(l.p) * l.qty; original += l.p.price * l.qty; });
+    return { lines: lines, removed: removed, subtotal: subtotal, savings: original - subtotal, total: subtotal + Number(C.siteInfo.deliveryFee) };
+  }
+  function summaryHtml(c) {
+    return '<div class="sum-rows notranslate-num"><span>Subtotal</span><span class="notranslate">' + esc(money(c.subtotal)) + '</span>' +
+      (c.savings > 0 ? '<span>Discount</span><span class="notranslate save">- ' + esc(money(c.savings)) + '</span>' : '') +
+      '<span>Delivery</span><span class="notranslate">' + esc(money(C.siteInfo.deliveryFee)) + '</span>' +
+      '<strong>Total</strong><strong class="notranslate">' + esc(money(c.total)) + '</strong></div>';
+  }
+  function lineHtml(l, editable) {
+    var img = l.p.images[0];
+    return '<div class="line" data-slug="' + esc(l.p.slug) + '">' + (img ? '<img src="' + esc(img.thumb) + '" alt="">' : '<span class="ph"></span>') +
+      '<div class="line-main"><a href="' + esc(C.gemUrl(l.p)) + '">' + esc(l.p.name) + '</a><div class="muted">' + C.priceHtml(l.p) + '</div>' +
+      (editable ? '<div class="line-tools">' + ((l.p.stock || 1) > 1 ? '<label>Qty <input type="number" min="1" max="' + (l.p.stock || 1) + '" value="' + l.qty + '" data-qty inputmode="numeric"></label>' : '<span class="muted">Qty 1</span>') + '<button type="button" class="link-btn" data-remove>Remove</button></div>' : '<div class="muted">Qty ' + l.qty + '</div>') +
+      '</div><strong class="notranslate">' + esc(money(C.payPrice(l.p) * l.qty)) + '</strong></div>';
   }
 
-  const customerOut = (c) => ({ name: c.name, email: c.email, phone: c.phone, address: c.address || {}, since: c.created_at });
-
-  function cleanAddress(a) {
-    a = a || {};
-    const district = DISTRICTS.includes(a.district) ? a.district : '';
-    return { line: str(a.line, 300), city: str(a.city, 80), district, postal: str(a.postal, 12) };
-  }
-
-  function orderOut(o, base, extra = {}) {
-    return {
-      no: o.order_no,
-      createdAt: o.created_at,
-      status: o.status,
-      statusText: STATUS_TEXT[o.status] || o.status,
-      paymentStatus: o.payment_status,
-      paymentText: PAYMENT_TEXT[o.payment_status] || o.payment_status,
-      paymentMethod: o.payment_method,
-      payLink: o.payment_method === 'card_link' && o.payment_status !== 'paid' && o.status !== 'cancelled' ? o.pay_link : '',
-      items: o.items.map((i) => ({ slug: i.slug, name: i.name, qty: i.qty, unitPrice: i.unitPrice, originalPrice: i.originalPrice, image: imgUrl(base, i.imageId) })),
-      subtotal: o.subtotal,
-      savings: o.savings,
-      deliveryFee: o.delivery_fee,
-      total: o.total,
-      currency: o.currency,
-      tracking: o.tracking,
-      delivery: { name: o.name, phone: o.phone, phone2: o.phone2, address: o.address_line, city: o.city, district: o.district, postal: o.postal_code, country: o.country },
-      notes: o.notes,
-      ...extra,
-    };
-  }
-  async function eventsFor(orderId) {
-    const { rows } = await pool.query('SELECT status, note, created_at FROM order_events WHERE order_id=$1 ORDER BY id', [orderId]);
-    return rows.map((e) => ({ status: e.status, statusText: STATUS_TEXT[e.status] || e.status, note: e.note, at: e.created_at }));
-  }
-  async function customerOrder(req) {
-    const no = parseInt(req.params.no, 10);
-    if (!Number.isInteger(no)) throw new HttpError(404, 'order_not_found');
-    const { rows } = await pool.query('SELECT * FROM orders WHERE site_id=$1 AND order_no=$2 AND customer_id=$3', [req.site.id, no, req.customer.id]);
-    if (!rows[0]) throw new HttpError(404, 'order_not_found');
-    return rows[0];
-  }
-  async function fullCustomerOrder(req, o) {
-    const [events, slips] = await Promise.all([
-      eventsFor(o.id),
-      pool.query('SELECT count(*)::int AS n FROM slips WHERE order_id=$1', [o.id]),
-    ]);
-    return orderOut(o, publicBase(req), { events, slipCount: slips.rows[0].n, cardAvailable: payhereReady(req.site) });
-  }
-
-  const shop = express.Router({ mergeParams: true });
-  app.use('/public/v1/:key', loadShopSite, shop);
-
-  const authLimit = limiter(15, 25);
-  shop.post(
-    '/auth/signup',
-    authLimit,
-    json,
-    wrap(async (req, res) => {
-      const name = str(req.body?.name, 80);
-      const email = str(req.body?.email, 200).toLowerCase();
-      const phone = str(req.body?.phone, 24);
-      const password = String(req.body?.password ?? '');
-      if (!name) throw new HttpError(400, 'name_required');
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'bad_email');
-      if (password.length < 8) throw new HttpError(400, 'short_password');
-      if (password.length > 200) throw new HttpError(400, 'bad_request');
-      const { rows } = await pool.query(
-        `INSERT INTO customers (id, site_id, email, name, phone, password_hash) VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (site_id, email) DO NOTHING RETURNING *`,
-        [newId(), req.site.id, email, name, phone, await hashPassword(password)]
-      );
-      if (!rows[0]) throw new HttpError(409, 'email_taken');
-      res.status(201).json({ token: await startSession(rows[0].id), customer: customerOut(rows[0]) });
-    })
-  );
-  shop.post(
-    '/auth/login',
-    authLimit,
-    json,
-    wrap(async (req, res) => {
-      const email = str(req.body?.email, 200).toLowerCase();
-      const { rows } = await pool.query('SELECT * FROM customers WHERE site_id=$1 AND email=$2', [req.site.id, email]);
-      const ok = rows[0] && (await checkPassword(String(req.body?.password ?? ''), rows[0].password_hash));
-      if (!ok) throw new HttpError(401, 'wrong_login');
-      await pool.query('UPDATE customers SET last_login=now() WHERE id=$1', [rows[0].id]);
-      res.json({ token: await startSession(rows[0].id), customer: customerOut(rows[0]) });
-    })
-  );
-  shop.post(
-    '/auth/logout',
-    customerAuth,
-    wrap(async (req, res) => {
-      await pool.query('DELETE FROM customer_sessions WHERE token_hash=$1', [tokenHash(req.token)]);
-      res.json({ ok: true });
-    })
-  );
-  shop.get('/me', customerAuth, (req, res) => res.json(customerOut(req.customer)));
-  shop.patch(
-    '/me',
-    customerAuth,
-    json,
-    wrap(async (req, res) => {
-      const c = req.customer;
-      const name = req.body.name !== undefined ? str(req.body.name, 80) : c.name;
-      if (!name) throw new HttpError(400, 'name_required');
-      const { rows } = await pool.query('UPDATE customers SET name=$1, phone=$2, address=$3 WHERE id=$4 RETURNING *', [
-        name,
-        req.body.phone !== undefined ? str(req.body.phone, 24) : c.phone,
-        JSON.stringify(req.body.address !== undefined ? cleanAddress(req.body.address) : c.address),
-        c.id,
-      ]);
-      res.json(customerOut(rows[0]));
-    })
-  );
-  shop.post(
-    '/me/password',
-    authLimit,
-    customerAuth,
-    json,
-    wrap(async (req, res) => {
-      if (!(await checkPassword(String(req.body.current ?? ''), req.customer.password_hash))) throw new HttpError(400, 'wrong_password');
-      const next = String(req.body.next ?? '');
-      if (next.length < 8 || next.length > 200) throw new HttpError(400, 'short_password');
-      await pool.query('UPDATE customers SET password_hash=$1 WHERE id=$2', [await hashPassword(next), req.customer.id]);
-      await pool.query('DELETE FROM customer_sessions WHERE customer_id=$1 AND token_hash<>$2', [req.customer.id, tokenHash(req.token)]);
-      res.json({ ok: true });
-    })
-  );
-
-  shop.get(
-    '/orders',
-    customerAuth,
-    wrap(async (req, res) => {
-      const { rows } = await pool.query('SELECT * FROM orders WHERE site_id=$1 AND customer_id=$2 ORDER BY created_at DESC LIMIT 200', [
-        req.site.id,
-        req.customer.id,
-      ]);
-      const base = publicBase(req);
-      res.json(rows.map((o) => orderOut(o, base)));
-    })
-  );
-  shop.get(
-    '/orders/:no',
-    customerAuth,
-    wrap(async (req, res) => res.json(await fullCustomerOrder(req, await customerOrder(req))))
-  );
-
-  shop.post(
-    '/orders',
-    limiter(60, 30),
-    customerAuth,
-    json,
-    wrap(async (req, res) => {
-      const b = req.body || {};
-      const site = req.site;
-      const wanted = new Map();
-      for (const it of Array.isArray(b.items) ? b.items.slice(0, 50) : []) {
-        const slug = str(it?.slug, 100);
-        const qty = Math.min(20, Math.max(1, parseInt(it?.qty, 10) || 1));
-        if (slug) wanted.set(slug, (wanted.get(slug) || 0) + qty);
+  /* ---------- cart ---------- */
+  C.pages.cart = function () {
+    var box = $('#cartBox');
+    loading(box);
+    C.catalog(function (data, final) {
+      C.applySite(data);
+      if (!data) { if (final) { box.innerHTML = C.noteHtml('Your cart could not load', 'Check your connection and refresh, or order on WhatsApp.'); C.wireWa(); } return; }
+      draw(data);
+    });
+    function draw(data) {
+      var c = cartLines(data);
+      if (!c.lines.length) {
+        box.innerHTML = (c.removed.length ? '<p class="alert">' + esc(c.removed.join(', ')) + ' is no longer available.</p>' : '') +
+          '<div class="note"><h3>Your cart is empty</h3><p>Browse our gems and add the ones you like.</p><a class="btn btn-solid" href="gems.html">See our gems</a></div>';
+        return;
       }
-      if (!wanted.size) throw new HttpError(400, 'empty_cart');
-      const dl = {
-        name: str(b.name, 80),
-        phone: str(b.phone, 24),
-        phone2: str(b.phone2, 24),
-        line: str(b.address, 300),
-        city: str(b.city, 80),
-        district: str(b.district, 40),
-        postal: str(b.postal, 12),
-        notes: str(b.notes, 1000),
-      };
-      if (!dl.name || !dl.line || !dl.city) throw new HttpError(400, 'address_required');
-      if (!DISTRICTS.includes(dl.district)) throw new HttpError(400, 'district_required');
-      if (digits(dl.phone).length < 9) throw new HttpError(400, 'phone_required');
-      let method = 'bank';
-      if (b.payment === 'card') {
-        if (payhereReady(site)) method = 'card';
-        else if (site.card_links) method = 'card_link';
-        else throw new HttpError(400, 'card_unavailable');
-      }
-      if (b.agree !== true) throw new HttpError(400, 'terms_required');
+      box.innerHTML = '<div class="cart-grid"><div class="glass-card lines">' + (c.removed.length ? '<p class="alert">' + esc(c.removed.join(', ')) + ' is no longer available and was removed.</p>' : '') +
+        c.lines.map(function (l) { return lineHtml(l, true); }).join('') + '</div>' +
+        '<aside class="glass-card summary"><h2>Order summary</h2>' + summaryHtml(c) + delivery() +
+        '<a class="btn btn-solid wide" href="checkout.html">Proceed to checkout</a><a class="btn btn-white wide" href="gems.html">Continue shopping</a></aside></div>';
+      $$('[data-qty]', box).forEach(function (input) {
+        input.addEventListener('change', function () {
+          var slug = input.closest('.line').dataset.slug;
+          var cart = C.cartGet();
+          cart.forEach(function (i) { if (i.slug === slug) i.qty = Math.max(1, Math.min(+input.max, parseInt(input.value, 10) || 1)); });
+          C.cartSet(cart);
+          draw(data);
+        });
+      });
+      $$('[data-remove]', box).forEach(function (b) {
+        b.addEventListener('click', function () {
+          var slug = b.closest('.line').dataset.slug;
+          C.cartSet(C.cartGet().filter(function (i) { return i.slug !== slug; }));
+          draw(data);
+        });
+      });
+      C.wireWa();
+    }
+  };
 
-      const order = await inTransaction(async (c) => {
-        const slugs = [...wanted.keys()];
-        const { rows: prods } = await c.query(
-          `SELECT p.* FROM products p JOIN product_sites ps ON ps.product_id = p.id AND ps.site_id = $1
-           WHERE p.slug = ANY($2) AND p.published FOR UPDATE OF p`,
-          [site.id, slugs]
-        );
-        const covers = await c.query(
-          `SELECT DISTINCT ON (product_id) product_id, id FROM images
-           WHERE product_id = ANY($1) AND kind = 'image' ORDER BY product_id, position`,
-          [prods.map((p) => p.id)]
-        );
-        const cover = Object.fromEntries(covers.rows.map((r) => [r.product_id, r.id]));
-        const problems = [];
-        const lines = [];
-        for (const [slug, qty] of wanted) {
-          const p = prods.find((x) => x.slug === slug);
-          if (!p || p.sold || p.stock < qty || p.price === null || p.currency !== 'LKR') {
-            problems.push(slug);
-            continue;
+  /* ---------- sign in ---------- */
+  C.pages.login = function () {
+    var next = C.qs('next') || 'account.html';
+    if (!/^[\w-]+\.html(\?[\w=&%.-]*)?$/.test(next)) next = 'account.html';
+    if (C.token()) { location.replace(next); return; }
+    var tabs = $$('[data-tab]'), forms = { in: $('#signIn'), up: $('#signUp') };
+    function show(which) {
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.tab === which)); });
+      forms.in.classList.toggle('hidden', which !== 'in');
+      forms.up.classList.toggle('hidden', which !== 'up');
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.dataset.tab); }); });
+    if (C.qs('new')) show('up');
+    if (/checkout/.test(next)) $('#loginWhy').classList.remove('hidden');
+    function submit(form, path, body) {
+      var err = $('.form-error', form), btn = $('button[type=submit]', form);
+      err.classList.add('hidden');
+      btn.disabled = true;
+      shopApi('POST', path, body).then(function (r) {
+        C.setToken(r.token);
+        location.replace(next);
+      }).catch(function (e) { btn.disabled = false; showError(err, e); });
+    }
+    forms.in.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = new FormData(forms.in);
+      submit(forms.in, '/auth/login', { email: f.get('email'), password: f.get('password') });
+    });
+    forms.up.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = new FormData(forms.up);
+      if (f.get('password') !== f.get('password2')) return showError($('.form-error', forms.up), 'The two passwords do not match.');
+      submit(forms.up, '/auth/signup', { name: f.get('name'), email: f.get('email'), phone: f.get('phone'), password: f.get('password') });
+    });
+    $('#forgotNums').innerHTML = C.numbersHtml('Hello ' + C.BRAND + ', I forgot my account password. My email is: ');
+  };
+
+  /* ---------- checkout ---------- */
+  C.pages.checkout = function () {
+    if (!requireLogin()) return;
+    var box = $('#checkoutBox');
+    loading(box);
+    var me = null, data = null;
+    shopApi('GET', '/me').then(function (m) { me = m; draw(); }).catch(function (e) { if (!onLoggedOut(e)) { me = {}; draw(); } });
+    C.catalog(function (d, final) {
+      C.applySite(d);
+      if (!d) { if (final) { box.innerHTML = C.noteHtml('Checkout could not load', 'Check your connection and refresh, or order on WhatsApp.'); C.wireWa(); } return; }
+      data = d;
+      draw();
+    });
+    function draw() {
+      if (!me || !data) return;
+      var c = cartLines(data);
+      if (!c.lines.length) {
+        box.innerHTML = '<div class="note"><h3>Your cart is empty</h3><p>Add a gem to your cart before you check out.</p><a class="btn btn-solid" href="gems.html">See our gems</a></div>';
+        return;
+      }
+      var a = me.address || {};
+      var banks = C.siteInfo.bankAccounts;
+      box.innerHTML = delivery() + '<form class="checkout-grid" id="co" novalidate><div class="col-main">' +
+        '<section class="glass-card"><h2>Delivery details</h2><div class="form-grid">' +
+        '<label class="full">Full name<input name="name" required maxlength="80" autocomplete="name" value="' + esc(me.name) + '"></label>' +
+        '<label>WhatsApp or phone number<input name="phone" required maxlength="24" inputmode="tel" autocomplete="tel" placeholder="077 123 4567" value="' + esc(me.phone) + '"></label>' +
+        '<label>Second phone number (optional)<input name="phone2" maxlength="24" inputmode="tel" placeholder="Another number we can call"></label>' +
+        '<label class="full">Address<input name="address" required maxlength="300" autocomplete="street-address" placeholder="House number, street" value="' + esc(a.line) + '"></label>' +
+        '<label>City or town<input name="city" required maxlength="80" autocomplete="address-level2" value="' + esc(a.city) + '"></label>' +
+        '<label>District<select name="district" required><option value="">Choose your district</option>' + DISTRICTS.map(function (d) { return '<option' + (d === a.district ? ' selected' : '') + '>' + d + '</option>'; }).join('') + '</select></label>' +
+        '<label>Postal code (optional)<input name="postal" maxlength="12" inputmode="numeric" autocomplete="postal-code" value="' + esc(a.postal) + '"></label>' +
+        '<label>Country<input value="Sri Lanka" disabled></label>' +
+        '<label class="full">Note for us (optional)<textarea name="notes" rows="3" maxlength="1000" placeholder="Directions for delivery, or a question about your order"></textarea></label></div></section>' +
+        '<section class="glass-card"><h2>Payment</h2><div class="pay-options">' +
+        '<label class="pay-opt"><input type="radio" name="payment" value="bank" checked><span><strong>Bank transfer</strong><small>Transfer the total to one of our accounts, then upload your payment slip. We start processing your order as soon as the slip arrives.</small></span></label>' +
+        '<label class="pay-opt' + (C.siteInfo.cardPayments ? '' : ' off') + '"><input type="radio" name="payment" value="card"' + (C.siteInfo.cardPayments ? '' : ' disabled') + '><span><strong>Card payment</strong><small>' + (!C.siteInfo.cardPayments ? 'Coming soon. Please pay by bank transfer for now.' : C.siteInfo.cardMode === 'link' ? 'Pay with Visa or Mastercard. After you order, we send you a secure card payment link here and on WhatsApp.' : 'Pay securely with Visa, Mastercard or Amex through PayHere.') + '</small></span></label></div>' +
+        '<div class="banks" id="bankList">' + banks.map(bankHtml).join('') + '</div></section></div>' +
+        '<aside class="glass-card summary"><h2>Your order</h2>' + c.lines.map(function (l) { return lineHtml(l, false); }).join('') + summaryHtml(c) +
+        '<label class="agree"><input type="checkbox" name="agree" required> I agree to the <a href="terms.html" target="_blank">Terms &amp; Conditions</a> and <a href="privacy.html" target="_blank">Privacy Policy</a></label>' +
+        '<p class="form-error hidden" role="alert"></p><button type="submit" class="btn btn-solid wide" id="place">Place order</button>' +
+        '<p class="hint">Need help? WhatsApp <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', I need help with my order.') + '</span></p></aside></form>';
+      var form = $('#co');
+      $$('[name=payment]', form).forEach(function (r) { r.addEventListener('change', function () { $('#bankList').classList.toggle('hidden', form.payment.value !== 'bank'); }); });
+      wireCopy(box);
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var f = new FormData(form), err = $('.form-error', form), btn = $('#place');
+        err.classList.add('hidden');
+        if (!f.get('name') || !f.get('address') || !f.get('city')) return showError(err, ERRORS.address_required);
+        if (String(f.get('phone') || '').replace(/\D/g, '').length < 9) return showError(err, ERRORS.phone_required);
+        if (!f.get('district')) return showError(err, ERRORS.district_required);
+        if (!f.get('agree')) return showError(err, ERRORS.terms_required);
+        btn.disabled = true;
+        btn.textContent = 'Placing your order...';
+        shopApi('POST', '/orders', {
+          items: c.lines.map(function (l) { return { slug: l.p.slug, qty: l.qty }; }),
+          name: f.get('name'), phone: f.get('phone'), phone2: f.get('phone2'), address: f.get('address'), city: f.get('city'),
+          district: f.get('district'), postal: f.get('postal'), notes: f.get('notes'), payment: f.get('payment'), agree: true,
+        }).then(function (o) {
+          C.cartSet([]);
+          location.href = 'order.html?no=' + o.no + '&new=1';
+        }).catch(function (e) {
+          btn.disabled = false;
+          btn.textContent = 'Place order';
+          if (onLoggedOut(e)) return;
+          if (e.code === 'item_unavailable' && e.details) {
+            C.cartSet(C.cartGet().filter(function (i) { return e.details.indexOf(i.slug) < 0; }));
+            C.catalog(function (d) { if (d) { data = d; draw(); showError($('.form-error'), ERRORS.item_unavailable); } });
+            return;
           }
-          lines.push({ productId: p.id, slug, name: p.name, qty, unitPrice: finalPrice(p), originalPrice: Number(p.price), imageId: cover[p.id] || null });
-        }
-        if (problems.length) {
-          const err = new HttpError(409, 'item_unavailable');
-          err.details = problems;
-          throw err;
-        }
-        for (const l of lines) {
-          await c.query('UPDATE products SET stock = stock - $2, sold = (stock - $2) <= 0, updated_at = now() WHERE id = $1', [l.productId, l.qty]);
-        }
-        const subtotal = money(lines.reduce((s, l) => s + l.unitPrice * l.qty, 0));
-        const savings = money(lines.reduce((s, l) => s + (l.originalPrice - l.unitPrice) * l.qty, 0));
-        const fee = money(site.delivery_fee);
-        const num = await c.query('UPDATE sites SET next_order_no = next_order_no + 1 WHERE id=$1 RETURNING next_order_no - 1 AS no', [site.id]);
-        const id = newId(12);
-        const { rows } = await c.query(
-          `INSERT INTO orders (id, site_id, order_no, customer_id, email, name, phone, phone2, address_line, city, district, postal_code,
-             notes, items, subtotal, savings, delivery_fee, total, payment_method)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
-          [id, site.id, num.rows[0].no, req.customer.id, req.customer.email, dl.name, dl.phone, dl.phone2, dl.line, dl.city, dl.district, dl.postal,
-            dl.notes, JSON.stringify(lines), subtotal, savings, fee, money(subtotal + fee), method]
-        );
-        await c.query("INSERT INTO order_events (order_id, status, note) VALUES ($1,'placed',$2)", [
-          id,
-          method === 'bank' ? 'Waiting for the bank transfer slip' : method === 'card_link' ? 'We will send you a secure card payment link' : 'Waiting for card payment',
-        ]);
-        return rows[0];
+          showError(err, e);
+        });
       });
-      // Saves the address so the next checkout is quicker.
-      await pool.query('UPDATE customers SET address=$1, phone=CASE WHEN phone=\'\' THEN $2 ELSE phone END WHERE id=$3', [
-        JSON.stringify(cleanAddress({ line: dl.line, city: dl.city, district: dl.district, postal: dl.postal })),
-        dl.phone,
-        req.customer.id,
-      ]);
-      res.status(201).json(await fullCustomerOrder(req, order));
-      sendWhatsAppAlert(
-        site,
-        `New order #${order.order_no} on ${site.name}\n${dl.name}, ${dl.phone}\n${dl.city}, ${dl.district}\nTotal: LKR ${order.total}\nPayment: ${method === 'bank' ? 'Bank transfer' : method === 'card_link' ? 'Card (send a payment link)' : 'Card'}`
-      );
-    })
-  );
-
-  shop.post(
-    '/orders/:no/slip',
-    limiter(60, 30),
-    customerAuth,
-    express.raw({ type: () => true, limit: '12mb' }),
-    wrap(async (req, res) => {
-      const o = await customerOrder(req);
-      if (o.status === 'cancelled') throw new HttpError(409, 'order_cancelled');
-      const buf = req.body;
-      if (!Buffer.isBuffer(buf) || !buf.length) throw new HttpError(400, 'bad_file');
-      const count = await pool.query('SELECT count(*)::int AS n FROM slips WHERE order_id=$1', [o.id]);
-      if (count.rows[0].n >= MAX_SLIPS) throw new HttpError(409, 'too_many_slips');
-      let data, mime;
-      if (buf.subarray(0, 5).toString('latin1') === '%PDF-') {
-        data = buf;
-        mime = 'application/pdf';
-      } else {
-        try {
-          data = await sharp(buf, { limitInputPixels: 80e6 }).rotate().resize(2200, 2200, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 86 }).toBuffer();
-          mime = 'image/webp';
-        } catch {
-          throw new HttpError(400, 'bad_file');
-        }
-      }
-      const { rows } = await inTransaction(async (c) => {
-        await c.query('INSERT INTO slips (id, order_id, mime, data, size_bytes) VALUES ($1,$2,$3,$4,$5)', [newId(12), o.id, mime, data, data.length]);
-        const up = await c.query(
-          `UPDATE orders SET payment_status = CASE WHEN payment_status='paid' THEN 'paid' ELSE 'slip_uploaded' END,
-             status = CASE WHEN status='placed' THEN 'processing' ELSE status END, seen=false, updated_at=now()
-           WHERE id=$1 RETURNING *`,
-          [o.id]
-        );
-        await c.query('INSERT INTO order_events (order_id, status, note) VALUES ($1,$2,$3)', [o.id, up.rows[0].status, 'Payment slip uploaded']);
-        return up;
+      C.wireWa();
+    }
+  };
+  function bankHtml(b) {
+    return '<div class="bank"><div><span class="muted">Bank</span><strong>' + esc(b.bank) + '</strong></div>' +
+      '<div><span class="muted">Account number</span><strong class="notranslate acc">' + esc(b.number) + '</strong><button type="button" class="link-btn" data-copy="' + esc(String(b.number).replace(/\s/g, '')) + '">Copy</button></div>' +
+      '<div><span class="muted">Account name</span><strong class="notranslate">' + esc(b.name) + '</strong></div>' + (b.branch ? '<div><span class="muted">Branch</span><strong>' + esc(b.branch) + '</strong></div>' : '') + '</div>';
+  }
+  function wireCopy(root) {
+    $$('[data-copy]', root).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy).then(done, function () {});
       });
-      res.json(await fullCustomerOrder(req, rows[0]));
-      sendWhatsAppAlert(req.site, `Payment slip uploaded for order #${o.order_no} on ${req.site.name}. Total: LKR ${o.total}`);
-    })
-  );
+    });
+  }
 
-  shop.post(
-    '/orders/:no/payhere',
-    customerAuth,
-    json,
-    wrap(async (req, res) => {
-      const site = req.site;
-      const o = await customerOrder(req);
-      if (!payhereReady(site)) throw new HttpError(400, 'card_unavailable');
-      if (o.status === 'cancelled') throw new HttpError(409, 'order_cancelled');
-      if (o.payment_status === 'paid') throw new HttpError(409, 'already_paid');
-      const amount = Number(o.total).toFixed(2);
-      const [first, ...rest] = o.name.split(/\s+/);
-      const siteUrl = (site.url || '').replace(/\/+$/, '');
-      res.json({
-        action: site.payhere_sandbox ? 'https://sandbox.payhere.lk/pay/checkout' : 'https://www.payhere.lk/pay/checkout',
-        fields: {
-          merchant_id: site.payhere_merchant_id,
-          return_url: `${siteUrl}/order.html?no=${o.order_no}&card=1`,
-          cancel_url: `${siteUrl}/order.html?no=${o.order_no}`,
-          notify_url: `${publicBase(req)}/public/payhere/notify`,
-          first_name: first || o.name,
-          last_name: rest.join(' ') || '-',
-          email: o.email,
-          phone: o.phone,
-          address: o.address_line,
-          city: o.city,
-          country: 'Sri Lanka',
-          order_id: o.id,
-          items: `Order ${o.order_no}`,
-          currency: 'LKR',
-          amount,
-          hash: md5u(site.payhere_merchant_id + o.id + amount + 'LKR' + md5u(site.payhere_secret)),
-        },
+  /* ---------- one order: payment, slip upload, tracking ---------- */
+  C.pages.order = function () {
+    if (!requireLogin()) return;
+    var no = parseInt(C.qs('no'), 10);
+    var box = $('#orderBox');
+    if (!no) { box.innerHTML = C.noteHtml('Order not found', 'Open your orders from My account.'); return; }
+    loading(box);
+    C.catalog(function (d) { C.applySite(d); });
+    var polls = 0;
+    function load() {
+      shopApi('GET', '/orders/' + no).then(draw).catch(function (e) {
+        if (onLoggedOut(e)) return;
+        box.innerHTML = '<div class="note"><h3>This order could not load</h3><p>' + esc(errText(e)) + '</p><a class="btn btn-solid" href="account.html">My account</a></div>';
       });
-    })
-  );
-
-  shop.post(
-    '/track',
-    limiter(15, 40),
-    json,
-    wrap(async (req, res) => {
-      const no = parseInt(req.body?.orderNo, 10);
-      const phone = lastNine(req.body?.phone);
-      const { rows } = Number.isInteger(no) && phone.length === 9
-        ? await pool.query('SELECT * FROM orders WHERE site_id=$1 AND order_no=$2', [req.site.id, no])
-        : { rows: [] };
-      const o = rows[0];
-      if (!o || (lastNine(o.phone) !== phone && lastNine(o.phone2) !== phone)) throw new HttpError(404, 'order_not_found');
-      res.json({
-        no: o.order_no,
-        createdAt: o.created_at,
-        status: o.status,
-        statusText: STATUS_TEXT[o.status],
-        paymentStatus: o.payment_status,
-        paymentText: PAYMENT_TEXT[o.payment_status],
-        tracking: o.tracking,
-        items: o.items.map((i) => ({ name: i.name, qty: i.qty })),
-        total: o.total,
-        currency: o.currency,
-        city: o.city,
-        events: await eventsFor(o.id),
+    }
+    load();
+    function draw(o) {
+      document.title = 'Order #' + o.no + ' | ' + C.BRAND;
+      var waText = 'Hello ' + C.BRAND + ', here is the payment slip for my order #' + o.no + '.';
+      var pay = '';
+      var cardBack = C.qs('card') && o.paymentStatus !== 'paid';
+      if (o.status === 'cancelled') {
+        pay = '<div class="notice warn">This order has been cancelled. Contact us on WhatsApp if you have a question.</div>';
+      } else if (o.paymentStatus === 'paid') {
+        pay = '<div class="notice ok"><strong>Payment confirmed.</strong> Thank you. Your order is being prepared.</div>';
+      } else if (cardBack) {
+        pay = '<div class="notice"><strong>Thank you.</strong> We are confirming your card payment. This page updates in a moment.</div>';
+        if (polls++ < 6) setTimeout(load, 5000);
+      } else if (o.paymentMethod === 'card' && o.cardAvailable) {
+        pay = '<div class="pay-box"><h2>Pay with card</h2><p>Pay <b class="notranslate">' + esc(money(o.total)) + '</b> securely through PayHere.</p><button type="button" class="btn btn-solid" id="payCard">Pay now with card</button><p class="form-error hidden" role="alert"></p>' +
+          '<p class="hint">Prefer a bank transfer? Pay to one of the accounts below and upload your slip.</p></div>';
+      }
+      if (o.paymentMethod === 'card_link' && o.status !== 'cancelled' && o.paymentStatus !== 'paid') {
+        pay = o.payLink ?
+          '<div class="pay-box"><h2>Pay with card</h2><p>Your secure card payment link is ready. Pay <b class="notranslate">' + esc(money(o.total)) + '</b> with Visa or Mastercard.</p><a class="btn btn-solid" id="payLink" href="' + esc(o.payLink) + '" target="_blank" rel="noopener noreferrer">Pay by card</a>' +
+            '<p class="hint">After you pay, we confirm your payment and update this page. Questions? WhatsApp <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', I have a question about paying for order #' + o.no + '.') + '</span></p></div>' :
+          '<div class="pay-box"><h2>Pay with card</h2><p>Thank you. We are preparing a secure card payment link for <b class="notranslate">' + esc(money(o.total)) + '</b>. It will appear here and we will send it to your WhatsApp shortly.</p>' +
+            '<p class="hint">Want it sooner? Message us: <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', please send me the card payment link for order #' + o.no + '.') + '</span></p><p class="hint">Prefer a bank transfer? Pay to one of the accounts below and upload your slip.</p></div>';
+        if (!o.payLink && polls++ < 40) setTimeout(load, 15000);
+      }
+      var showBank = o.status !== 'cancelled' && o.paymentStatus !== 'paid' && !cardBack;
+      var slipDone = o.paymentStatus === 'slip_uploaded';
+      var bank = showBank ? '<div class="pay-box">' +
+        (slipDone ? '<div class="notice ok"><strong>We received your payment slip.</strong> Your order is being processed. We will update this page when it is on its way.</div>' :
+          '<h2>Pay by bank transfer</h2><ol class="pay-steps"><li>Transfer <b class="notranslate">' + esc(money(o.total)) + '</b> to one of these accounts.</li><li>Use your order number <b class="notranslate">#' + o.no + '</b> as the reference.</li><li>Upload a photo or PDF of your payment slip below.</li></ol>') +
+        '<div class="banks">' + C.siteInfo.bankAccounts.map(bankHtml).join('') + '</div>' +
+        '<form id="slipForm" class="slip-form"><label class="drop-zone"><input type="file" name="slip" accept="image/*,application/pdf" required><span id="slipName">' + (slipDone ? 'Upload another slip' : 'Choose your payment slip') + '</span><small>Photo or PDF, up to 12 MB</small></label>' +
+        '<button type="submit" class="btn btn-solid">Upload slip</button><p class="form-error hidden" role="alert"></p></form>' +
+        '<div class="fast"><strong>Want your order sooner?</strong> Also send your slip to us on WhatsApp and we will confirm it quickly: <span class="nums">' + C.numbersHtml(waText) + '</span></div></div>' : '';
+      box.innerHTML = '<div class="order-head">' + (C.qs('new') ? '<p class="thanks">Thank you. Your order has been placed.</p>' : '') +
+        '<h1 class="order-no">Order <span class="notranslate">#' + o.no + '</span></h1>' + statusPill(o) + '<span class="pill pay">' + esc(o.paymentText) + '</span><p class="muted">Placed on ' + esc(when(o.createdAt)) + '</p></div>' +
+        '<div class="order-grid"><div class="col-main">' + pay + bank +
+        '<section class="glass-card"><h2>Order progress</h2><ol class="timeline">' + o.events.map(function (ev) {
+          return '<li><strong>' + esc(ev.statusText) + '</strong><span class="muted">' + esc(when(ev.at)) + '</span>' + (ev.note ? '<span>' + esc(ev.note) + '</span>' : '') + '</li>';
+        }).join('') + '</ol>' + (o.tracking ? '<p class="tracking"><strong>Delivery details:</strong> ' + esc(o.tracking) + '</p>' : '') + '</section></div>' +
+        '<aside class="glass-card summary"><h2>Items</h2>' + o.items.map(function (i) {
+          return '<div class="line">' + (i.image ? '<img src="' + esc(i.image) + '" alt="">' : '<span class="ph"></span>') + '<div class="line-main"><span>' + esc(i.name) + '</span><div class="muted">Qty ' + i.qty + '</div></div><strong class="notranslate">' + esc(money(i.unitPrice * i.qty)) + '</strong></div>';
+        }).join('') +
+        '<div class="sum-rows"><span>Subtotal</span><span class="notranslate">' + esc(money(o.subtotal)) + '</span>' + (o.savings > 0 ? '<span>Discount</span><span class="notranslate save">- ' + esc(money(o.savings)) + '</span>' : '') +
+        '<span>Delivery</span><span class="notranslate">' + esc(money(o.deliveryFee)) + '</span><strong>Total</strong><strong class="notranslate">' + esc(money(o.total)) + '</strong></div>' +
+        '<h2>Delivery to</h2><p>' + esc(o.delivery.name) + '<br>' + esc([o.delivery.address, o.delivery.city, o.delivery.district, o.delivery.postal].filter(Boolean).join(', ')) + '<br>Sri Lanka<br><span class="notranslate">' + esc(o.delivery.phone) + '</span></p>' +
+        '<p class="hint">Delivered to your door within <b data-days>' + C.siteInfo.deliveryDays + '</b> working days after your payment is confirmed.</p>' +
+        '<a class="btn btn-white wide" href="account.html">All my orders</a></aside></div>';
+      wireCopy(box);
+      var sf = $('#slipForm');
+      if (sf) {
+        var input = $('input[type=file]', sf);
+        input.addEventListener('change', function () { if (input.files[0]) $('#slipName').textContent = input.files[0].name; });
+        sf.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var file = input.files[0], err = $('.form-error', sf), btn = $('button', sf);
+          err.classList.add('hidden');
+          if (!file) return showError(err, 'Choose your slip first.');
+          if (file.size > 12 * 1048576) return showError(err, ERRORS.file_too_large);
+          btn.disabled = true;
+          btn.textContent = 'Uploading...';
+          shopApi('POST', '/orders/' + o.no + '/slip', file, true).then(function (fresh) {
+            C.toast('Payment slip received. Your order is being processed.');
+            draw(fresh);
+          }).catch(function (e2) { btn.disabled = false; btn.textContent = 'Upload slip'; if (!onLoggedOut(e2)) showError(err, e2); });
+        });
+      }
+      var pc = $('#payCard');
+      if (pc) pc.addEventListener('click', function () {
+        pc.disabled = true;
+        shopApi('POST', '/orders/' + o.no + '/payhere', {}).then(function (r) {
+          var f = document.createElement('form');
+          f.method = 'POST';
+          f.action = r.action;
+          Object.keys(r.fields).forEach(function (k) {
+            var i = document.createElement('input');
+            i.type = 'hidden';
+            i.name = k;
+            i.value = r.fields[k];
+            f.append(i);
+          });
+          document.body.append(f);
+          f.submit();
+        }).catch(function (e) { pc.disabled = false; showError($('.form-error', pc.parentNode), e); });
       });
-    })
-  );
+      C.wireWa();
+    }
+  };
 
-  // PayHere tells the server about each card payment here. Only a correct signature changes an order.
-  app.post(
-    '/public/payhere/notify',
-    express.urlencoded({ extended: false, limit: '20kb' }),
-    wrap(async (req, res) => {
-      const b = req.body || {};
-      const { rows } = await pool.query('SELECT o.*, s.payhere_merchant_id, s.payhere_secret, s.name AS site_name, s.id AS sid, s.whatsapp, s.alert_key FROM orders o JOIN sites s ON s.id=o.site_id WHERE o.id=$1', [
-        str(b.order_id, 40),
-      ]);
-      const o = rows[0];
-      if (!o || !o.payhere_secret || b.merchant_id !== o.payhere_merchant_id) return res.status(400).end();
-      const local = md5u(String(b.merchant_id) + b.order_id + b.payhere_amount + b.payhere_currency + b.status_code + md5u(o.payhere_secret));
-      const given = String(b.md5sig || '').toUpperCase();
-      if (given.length !== local.length || !crypto.timingSafeEqual(Buffer.from(local), Buffer.from(given))) return res.status(400).end();
-      if (Number(b.payhere_amount).toFixed(2) !== Number(o.total).toFixed(2) || b.payhere_currency !== o.currency) {
-        console.error('PayHere amount did not match order', o.order_no);
-        return res.status(400).end();
-      }
-      const code = String(b.status_code);
-      if (code === '2' && o.payment_status !== 'paid') {
-        const up = await pool.query(
-          `UPDATE orders SET payment_status='paid', payment_ref=$2, status = CASE WHEN status='placed' THEN 'processing' ELSE status END,
-             seen=false, updated_at=now() WHERE id=$1 RETURNING status`,
-          [o.id, str(b.payment_id, 60)]
-        );
-        await pool.query('INSERT INTO order_events (order_id, status, note) VALUES ($1,$2,$3)', [o.id, up.rows[0].status, 'Card payment received']);
-        sendWhatsAppAlert({ whatsapp: o.whatsapp, alert_key: o.alert_key }, `Card payment received for order #${o.order_no} on ${o.site_name}. LKR ${o.total}`);
-      } else if (['-1', '-2', '-3'].includes(code) && o.payment_status !== 'paid') {
-        await pool.query("UPDATE orders SET payment_status='failed', updated_at=now() WHERE id=$1", [o.id]);
-        await pool.query('INSERT INTO order_events (order_id, status, note) VALUES ($1,$2,$3)', [o.id, o.status, 'Card payment did not go through']);
-      }
-      res.end('OK');
-    })
-  );
+  /* ---------- track an order ---------- */
+  C.pages.track = function () {
+    C.catalog(function (d) { C.applySite(d); });
+    var form = $('#trackForm'), out = $('#trackOut');
+    if (C.qs('no')) form.orderNo.value = C.qs('no');
+    if (C.token()) $('#trackAccount').classList.remove('hidden');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var err = $('.form-error', form), btn = $('button', form);
+      err.classList.add('hidden');
+      btn.disabled = true;
+      shopApi('POST', '/track', { orderNo: form.orderNo.value.replace(/\D/g, ''), phone: form.phone.value }).then(function (o) {
+        btn.disabled = false;
+        var steps = ['placed', 'processing', 'shipped', 'delivered'];
+        var at = steps.indexOf(o.status);
+        out.innerHTML = '<section class="glass-card track-card"><h2>Order <span class="notranslate">#' + o.no + '</span></h2>' + statusPill(o) + '<span class="pill pay">' + esc(o.paymentText) + '</span>' +
+          (o.status === 'cancelled' ? '' : '<ol class="progress">' + ['Order placed', 'Being processed', 'Handed for delivery', 'Delivered'].map(function (label, i) {
+            return '<li class="' + (i <= at ? 'done' : '') + '">' + label + '</li>';
+          }).join('') + '</ol>') +
+          (o.tracking ? '<p class="tracking"><strong>Delivery details:</strong> ' + esc(o.tracking) + '</p>' : '') +
+          '<p class="muted">' + esc(o.items.map(function (i) { return i.name + (i.qty > 1 ? ' x' + i.qty : ''); }).join(', ')) + '. Total <span class="notranslate">' + esc(money(o.total)) + '</span>.</p>' +
+          '<ol class="timeline">' + o.events.map(function (ev) { return '<li><strong>' + esc(ev.statusText) + '</strong><span class="muted">' + esc(when(ev.at)) + '</span>' + (ev.note ? '<span>' + esc(ev.note) + '</span>' : '') + '</li>'; }).join('') + '</ol></section>';
+        out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }).catch(function (e2) { btn.disabled = false; out.innerHTML = ''; showError(err, e2); });
+    });
+  };
 
-  /* ---------- dashboard side ---------- */
-  const adminOrderOut = (o) => ({
-    id: o.id,
-    no: o.order_no,
-    siteId: o.site_id,
-    siteName: o.site_name,
-    createdAt: o.created_at,
-    updatedAt: o.updated_at,
-    name: o.name,
-    email: o.email,
-    phone: o.phone,
-    phone2: o.phone2,
-    address: o.address_line,
-    city: o.city,
-    district: o.district,
-    postal: o.postal_code,
-    country: o.country,
-    notes: o.notes,
-    items: o.items.map((i) => ({ ...i, image: i.imageId ? `/img/${i.imageId}/thumb` : null })),
-    subtotal: o.subtotal,
-    savings: o.savings,
-    deliveryFee: o.delivery_fee,
-    total: o.total,
-    currency: o.currency,
-    paymentMethod: o.payment_method,
-    payLink: o.pay_link,
-    paymentStatus: o.payment_status,
-    paymentRef: o.payment_ref,
-    status: o.status,
-    tracking: o.tracking,
-    seen: o.seen,
-    slipCount: o.slip_count || 0,
-  });
-
-  api.get(
-    '/orders',
-    requireAuth,
-    wrap(async (req, res) => {
-      const where = [];
-      const args = [];
-      if (req.query.site) {
-        args.push(String(req.query.site));
-        where.push(`o.site_id=$${args.length}`);
-      }
-      const tab = String(req.query.tab || 'all');
-      if (tab === 'waiting') where.push("o.status='placed' AND o.payment_status IN ('pending','failed')");
-      else if (tab === 'check') where.push("o.payment_status='slip_uploaded' AND o.status<>'cancelled'");
-      else if (STATUSES.includes(tab)) {
-        args.push(tab);
-        where.push(`o.status=$${args.length}`);
-      }
-      const q = str(req.query.q, 80);
-      if (q) {
-        args.push(`%${q.replace(/[%_\\]/g, '\\$&')}%`);
-        const n = args.length;
-        where.push(`(o.order_no::text LIKE $${n} OR o.name ILIKE $${n} OR o.phone LIKE $${n} OR o.email ILIKE $${n})`);
-      }
-      const { rows } = await pool.query(
-        `SELECT o.*, s.name AS site_name, (SELECT count(*)::int FROM slips x WHERE x.order_id=o.id) AS slip_count
-         FROM orders o JOIN sites s ON s.id=o.site_id ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-         ORDER BY o.created_at DESC LIMIT 500`,
-        args
-      );
-      res.json(rows.map(adminOrderOut));
-    })
-  );
-  api.get(
-    '/orders/:id',
-    requireAuth,
-    wrap(async (req, res) => {
-      const { rows } = await pool.query('SELECT o.*, s.name AS site_name FROM orders o JOIN sites s ON s.id=o.site_id WHERE o.id=$1', [req.params.id]);
-      if (!rows[0]) throw new HttpError(404, 'not_found');
-      const [events, slips] = await Promise.all([
-        eventsFor(rows[0].id),
-        pool.query('SELECT id, mime, size_bytes, created_at FROM slips WHERE order_id=$1 ORDER BY created_at', [rows[0].id]),
-      ]);
-      await pool.query('UPDATE orders SET seen=true WHERE id=$1', [rows[0].id]);
-      res.json({
-        ...adminOrderOut(rows[0]),
-        events,
-        slips: slips.rows.map((s) => ({ id: s.id, url: `/api/slips/${s.id}`, pdf: s.mime === 'application/pdf', at: s.created_at })),
+  /* ---------- My account ---------- */
+  C.pages.account = function () {
+    if (!requireLogin()) return;
+    var box = $('#accountBox');
+    loading(box);
+    C.catalog(function (d) { C.applySite(d); });
+    Promise.all([shopApi('GET', '/me'), shopApi('GET', '/orders')]).then(function (r) {
+      var me = r[0], orders = r[1], a = me.address || {};
+      box.innerHTML = '<div class="acc-head"><h2>Hello, ' + esc(me.name.split(' ')[0]) + '</h2><p class="muted">' + esc(me.email) + '</p><button type="button" class="btn btn-white" id="logout">Sign out</button></div>' +
+        '<div class="acc-grid"><section class="glass-card"><h2>My orders</h2>' + (orders.length ? '<div class="orders">' + orders.map(function (o) {
+          return '<a class="order-row" href="order.html?no=' + o.no + '"><strong class="notranslate">#' + o.no + '</strong><span class="muted">' + esc(when(o.createdAt)) + '</span><span class="notranslate">' + esc(money(o.total)) + '</span>' + statusPill(o) + '</a>';
+        }).join('') + '</div>' : '<p class="muted">You have not placed an order yet.</p><a class="btn btn-solid" href="gems.html">See our gems</a>') + '</section>' +
+        '<section class="glass-card"><h2>My details</h2><form id="prof" class="form-grid">' +
+        '<label class="full">Full name<input name="name" required maxlength="80" value="' + esc(me.name) + '"></label>' +
+        '<label class="full">Phone number<input name="phone" maxlength="24" inputmode="tel" value="' + esc(me.phone) + '"></label>' +
+        '<label class="full">Address<input name="line" maxlength="300" value="' + esc(a.line) + '"></label>' +
+        '<label>City or town<input name="city" maxlength="80" value="' + esc(a.city) + '"></label>' +
+        '<label>District<select name="district"><option value="">Choose</option>' + DISTRICTS.map(function (d) { return '<option' + (d === a.district ? ' selected' : '') + '>' + d + '</option>'; }).join('') + '</select></label>' +
+        '<label>Postal code<input name="postal" maxlength="12" value="' + esc(a.postal) + '"></label>' +
+        '<div class="full"><button class="btn btn-solid">Save my details</button><p class="form-error hidden" role="alert"></p></div></form></section>' +
+        '<section class="glass-card"><h2>Change password</h2><form id="pw" class="form-grid"><label class="full">Current password<input type="password" name="current" required autocomplete="current-password"></label>' +
+        '<label class="full">New password<input type="password" name="next" required minlength="8" autocomplete="new-password"></label><div class="full"><button class="btn btn-white">Change password</button><p class="form-error hidden" role="alert"></p></div></form></section></div>';
+      $('#logout').addEventListener('click', function () {
+        shopApi('POST', '/auth/logout', {}).catch(function () {}).finally(function () { C.setToken(null); location.href = 'index.html'; });
       });
-    })
-  );
-  api.patch(
-    '/orders/:id',
-    requireAuth,
-    wrap(async (req, res) => {
-      const b = req.body || {};
-      await inTransaction(async (c) => {
-        const { rows } = await c.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE', [req.params.id]);
-        const o = rows[0];
-        if (!o) throw new HttpError(404, 'not_found');
-        const status = b.status !== undefined ? String(b.status) : o.status;
-        const pay = b.paymentStatus !== undefined ? String(b.paymentStatus) : o.payment_status;
-        if (!STATUSES.includes(status) || !PAYMENT_STATUSES.includes(pay)) throw new HttpError(400, 'bad_request');
-        const tracking = b.tracking !== undefined ? str(b.tracking, 300) : o.tracking;
-        let payLink = o.pay_link;
-        if (b.payLink !== undefined) {
-          payLink = str(b.payLink, 1000);
-          if (payLink) {
-            let u;
-            try { u = new URL(payLink); } catch { u = null; }
-            if (!u || u.protocol !== 'https:') throw new HttpError(400, 'bad_pay_link');
-            payLink = u.href;
-          }
-        }
-        const note = str(b.note, 500);
-        // Cancelling puts the stones back on sale. Re-opening takes them off sale again, if they are still free.
-        if (status === 'cancelled' && o.status !== 'cancelled') {
-          for (const i of o.items) {
-            await c.query('UPDATE products SET stock = stock + $2, sold = false, updated_at=now() WHERE id=$1', [i.productId, i.qty]);
-          }
-        } else if (o.status === 'cancelled' && status !== 'cancelled') {
-          for (const i of o.items) {
-            const up = await c.query(
-              'UPDATE products SET stock = stock - $2, sold = (stock - $2) <= 0, updated_at=now() WHERE id=$1 AND NOT sold AND stock >= $2',
-              [i.productId, i.qty]
-            );
-            if (!up.rowCount) throw new HttpError(409, 'item_unavailable');
-          }
-        }
-        await c.query('UPDATE orders SET status=$2, payment_status=$3, tracking=$4, pay_link=$5, updated_at=now() WHERE id=$1', [o.id, status, pay, tracking, payLink]);
-        const notes = [];
-        if (pay !== o.payment_status) notes.push(PAYMENT_TEXT[pay]);
-        if (tracking !== o.tracking && tracking) notes.push(`Delivery details: ${tracking}`);
-        if (payLink && payLink !== o.pay_link) notes.push('Card payment link ready');
-        if (note) notes.push(note);
-        if (status !== o.status || notes.length) {
-          await c.query('INSERT INTO order_events (order_id, status, note) VALUES ($1,$2,$3)', [o.id, status, notes.join('. ')]);
-        }
+      $('#prof').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var f = new FormData(e.target), err = $('.form-error', e.target);
+        err.classList.add('hidden');
+        shopApi('PATCH', '/me', { name: f.get('name'), phone: f.get('phone'), address: { line: f.get('line'), city: f.get('city'), district: f.get('district'), postal: f.get('postal') } })
+          .then(function () { C.toast('Your details are saved'); }).catch(function (e2) { showError(err, e2); });
       });
-      const { rows } = await pool.query('SELECT o.*, s.name AS site_name FROM orders o JOIN sites s ON s.id=o.site_id WHERE o.id=$1', [req.params.id]);
-      res.json({ ...adminOrderOut(rows[0]), events: await eventsFor(rows[0].id) });
-    })
-  );
-  api.get(
-    '/slips/:id',
-    requireAuth,
-    wrap(async (req, res) => {
-      const { rows } = await pool.query('SELECT mime, data FROM slips WHERE id=$1', [req.params.id]);
-      if (!rows[0]) throw new HttpError(404, 'not_found');
-      res.set({ 'Content-Type': rows[0].mime, 'Cache-Control': 'private, max-age=3600', 'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" });
-      res.end(rows[0].data);
-    })
-  );
+      $('#pw').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var f = new FormData(e.target), err = $('.form-error', e.target);
+        err.classList.add('hidden');
+        shopApi('POST', '/me/password', { current: f.get('current'), next: f.get('next') })
+          .then(function () { e.target.reset(); C.toast('Your password is changed'); }).catch(function (e2) { showError(err, e2); });
+      });
+    }).catch(function (e) {
+      if (onLoggedOut(e)) return;
+      box.innerHTML = '<div class="note"><h3>Your account could not load</h3><p>' + esc(errText(e)) + '</p></div>';
+    });
+  };
 
-  api.get(
-    '/customers',
-    requireAuth,
-    wrap(async (req, res) => {
-      const where = [];
-      const args = [];
-      if (req.query.site) {
-        args.push(String(req.query.site));
-        where.push(`c.site_id=$${args.length}`);
-      }
-      const q = str(req.query.q, 80);
-      if (q) {
-        args.push(`%${q.replace(/[%_\\]/g, '\\$&')}%`);
-        where.push(`(c.name ILIKE $${args.length} OR c.email ILIKE $${args.length} OR c.phone LIKE $${args.length})`);
-      }
-      const { rows } = await pool.query(
-        `SELECT c.id, c.name, c.email, c.phone, c.address, c.created_at, c.last_login, s.name AS site_name,
-           (SELECT count(*)::int FROM orders o WHERE o.customer_id=c.id) AS orders,
-           (SELECT COALESCE(sum(total),0)::float8 FROM orders o WHERE o.customer_id=c.id AND o.status<>'cancelled') AS spent
-         FROM customers c JOIN sites s ON s.id=c.site_id ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-         ORDER BY c.created_at DESC LIMIT 1000`,
-        args
-      );
-      res.json(rows);
-    })
-  );
-  api.post(
-    '/customers/:id/password',
-    requireAuth,
-    wrap(async (req, res) => {
-      // A readable temporary password the owner can send to the customer.
-      const words = crypto.randomBytes(9).toString('base64url').replace(/[-_]/g, 'x');
-      const password = words;
-      const up = await pool.query('UPDATE customers SET password_hash=$1 WHERE id=$2', [await hashPassword(password), req.params.id]);
-      if (!up.rowCount) throw new HttpError(404, 'not_found');
-      await pool.query('DELETE FROM customer_sessions WHERE customer_id=$1', [req.params.id]);
-      res.json({ password });
-    })
-  );
-  api.delete(
-    '/customers/:id',
-    requireAuth,
-    requireOwner,
-    wrap(async (req, res) => {
-      await pool.query('DELETE FROM customers WHERE id=$1', [req.params.id]);
-      res.json({ ok: true });
-    })
-  );
-
-  return { DISTRICTS };
-};
+  /* ---------- contact page numbers ---------- */
+  var contact = C.pages.contact;
+  C.pages.contact = function () {
+    if (contact) contact();
+    var n = $('#contactNums');
+    if (n) n.innerHTML = C.CONTACTS.map(function (c) {
+      return '<a class="phone notranslate" target="_blank" rel="noopener" href="' + esc(C.waLink('Hello ' + C.BRAND + ', I have a question.', c.num)) + '">' + esc(c.label) + '</a>';
+    }).join('');
+  };
+  C.pages.privacy = C.pages.terms = function () { C.catalog(function (d) { C.applySite(d); }); };
+})();
