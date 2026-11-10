@@ -55,16 +55,16 @@
   function cartLines(data) {
     var products = (data && data.products) || [];
     var removed = [];
-    var lines = [];
+    var lines = [], ask = [];
     C.cartGet().forEach(function (i) {
       var p = products.filter(function (x) { return x.slug === i.slug; })[0];
-      if (!p || !C.buyable(p)) { removed.push(p ? p.name : 'A stone'); return; }
-      lines.push({ p: p, qty: Math.min(i.qty, p.stock || 1) });
+      if (!p || !C.cartable(p)) { removed.push(p ? p.name : 'A stone'); return; }
+      (C.buyable(p) ? lines : ask).push({ p: p, qty: Math.min(i.qty, p.stock || 1) });
     });
-    if (removed.length) C.cartSet(lines.map(function (l) { return { slug: l.p.slug, qty: l.qty }; }));
+    if (removed.length) C.cartSet(lines.concat(ask).map(function (l) { return { slug: l.p.slug, qty: l.qty }; }));
     var subtotal = 0, original = 0;
     lines.forEach(function (l) { subtotal += C.payPrice(l.p) * l.qty; original += l.p.price * l.qty; });
-    return { lines: lines, removed: removed, subtotal: subtotal, savings: original - subtotal, total: subtotal + Number(C.siteInfo.deliveryFee) };
+    return { lines: lines, ask: ask, removed: removed, subtotal: subtotal, savings: original - subtotal, total: subtotal + Number(C.siteInfo.deliveryFee) };
   }
   function summaryHtml(c) {
     return '<div class="sum-rows notranslate-num"><span>Subtotal</span><span class="notranslate">' + esc(money(c.subtotal)) + '</span>' +
@@ -72,12 +72,18 @@
       '<span>Delivery</span><span class="notranslate">' + esc(money(C.siteInfo.deliveryFee)) + '</span>' +
       '<strong>Total</strong><strong class="notranslate">' + esc(money(c.total)) + '</strong></div>';
   }
+  var WA_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.3Z"/></svg>';
+  function askListMessage(ask) {
+    return 'Hello ' + C.BRAND + ', I would like to buy these gems. Please tell me the prices:\n' + ask.map(function (l) {
+      return '- ' + l.p.name + (l.qty > 1 ? ' (quantity ' + l.qty + ')' : '') + '\n  ' + new URL(C.gemUrl(l.p), location.href).href;
+    }).join('\n');
+  }
   function lineHtml(l, editable) {
     var img = l.p.images[0];
     return '<div class="line" data-slug="' + esc(l.p.slug) + '">' + (img ? '<img src="' + esc(img.thumb) + '" alt="">' : '<span class="ph"></span>') +
-      '<div class="line-main"><a href="' + esc(C.gemUrl(l.p)) + '">' + esc(l.p.name) + '</a><div class="muted">' + C.priceHtml(l.p) + '</div>' +
+      '<div class="line-main"><a href="' + esc(C.gemUrl(l.p)) + '">' + esc(l.p.name) + '</a><div class="muted">' + (C.buyable(l.p) ? C.priceHtml(l.p) : 'Price on request') + '</div>' +
       (editable ? '<div class="line-tools">' + ((l.p.stock || 1) > 1 ? '<label>Qty <input type="number" min="1" max="' + (l.p.stock || 1) + '" value="' + l.qty + '" data-qty inputmode="numeric"></label>' : '<span class="muted">Qty 1</span>') + '<button type="button" class="link-btn" data-remove>Remove</button></div>' : '<div class="muted">Qty ' + l.qty + '</div>') +
-      '</div><strong class="notranslate">' + esc(money(C.payPrice(l.p) * l.qty)) + '</strong></div>';
+      '</div><strong class="notranslate">' + (C.buyable(l.p) ? esc(money(C.payPrice(l.p) * l.qty)) : '') + '</strong></div>';
   }
 
   /* ---------- cart ---------- */
@@ -91,15 +97,22 @@
     });
     function draw(data) {
       var c = cartLines(data);
-      if (!c.lines.length) {
+      if (!c.lines.length && !c.ask.length) {
         box.innerHTML = (c.removed.length ? '<p class="alert">' + esc(c.removed.join(', ')) + ' is no longer available.</p>' : '') +
           '<div class="note"><h3>Your cart is empty</h3><p>Browse our gems and add the ones you like.</p><a class="btn btn-solid" href="gems.html">See our gems</a></div>';
         return;
       }
-      box.innerHTML = '<div class="cart-grid"><div class="glass-card lines">' + (c.removed.length ? '<p class="alert">' + esc(c.removed.join(', ')) + ' is no longer available and was removed.</p>' : '') +
-        c.lines.map(function (l) { return lineHtml(l, true); }).join('') + '</div>' +
-        '<aside class="glass-card summary"><h2>Order summary</h2>' + summaryHtml(c) + delivery() +
-        '<a class="btn btn-solid wide" href="checkout.html">Proceed to checkout</a><a class="btn btn-white wide" href="gems.html">Continue shopping</a></aside></div>';
+      var removedHtml = c.removed.length ? '<p class="alert">' + esc(c.removed.join(', ')) + ' is no longer available and was removed.</p>' : '';
+      var askHtml = c.ask.length ? '<div class="glass-card lines ask-lines"><h2>Price on request</h2><p class="muted">We tell you the price of these gems on WhatsApp and help you complete your purchase.</p>' +
+        c.ask.map(function (l) { return lineHtml(l, true); }).join('') +
+        '<a class="btn btn-wa wide" target="_blank" rel="noopener" href="' + esc(C.waLink(askListMessage(c.ask))) + '">' + WA_SVG + 'Ask prices on WhatsApp</a>' +
+        '<p class="hint">Or message us: <span class="nums">' + C.numbersHtml(askListMessage(c.ask)) + '</span></p></div>' : '';
+      box.innerHTML = '<div class="cart-grid"><div class="cart-main">' + removedHtml +
+        (c.lines.length ? '<div class="glass-card lines">' + c.lines.map(function (l) { return lineHtml(l, true); }).join('') + '</div>' : '') + askHtml + '</div>' +
+        '<aside class="glass-card summary"><h2>Order summary</h2>' + (c.lines.length ? summaryHtml(c) + delivery() +
+          '<a class="btn btn-solid wide" href="checkout.html">Proceed to checkout</a>' :
+          '<p>The gems in your cart are priced on request. Ask us on WhatsApp and we will tell you the prices.</p>' + delivery()) +
+        '<a class="btn btn-white wide" href="gems.html">Continue shopping</a></aside></div>';
       $$('[data-qty]', box).forEach(function (input) {
         input.addEventListener('change', function () {
           var slug = input.closest('.line').dataset.slug;
@@ -174,7 +187,9 @@
       if (!me || !data) return;
       var c = cartLines(data);
       if (!c.lines.length) {
-        box.innerHTML = '<div class="note"><h3>Your cart is empty</h3><p>Add a gem to your cart before you check out.</p><a class="btn btn-solid" href="gems.html">See our gems</a></div>';
+        box.innerHTML = c.ask.length ?
+          '<div class="note"><h3>Ask us for the prices first</h3><p>The gems in your cart are priced on request. Message us on WhatsApp and we will tell you the prices and help you buy them.</p><a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(C.waLink(askListMessage(c.ask))) + '">' + WA_SVG + 'Ask prices on WhatsApp</a> <a class="btn btn-white" href="cart.html">Back to cart</a></div>' :
+          '<div class="note"><h3>Your cart is empty</h3><p>Add a gem to your cart before you check out.</p><a class="btn btn-solid" href="gems.html">See our gems</a></div>';
         return;
       }
       var a = me.address || {};
@@ -195,6 +210,7 @@
         '<label class="pay-opt' + (C.siteInfo.cardPayments ? '' : ' off') + '"><input type="radio" name="payment" value="card"' + (C.siteInfo.cardPayments ? '' : ' disabled') + '><span><strong>Card payment</strong><small>' + (!C.siteInfo.cardPayments ? 'Coming soon. Please pay by bank transfer for now.' : C.siteInfo.cardMode === 'link' ? 'Pay with Visa or Mastercard. After you order, we send you a secure card payment link here and on WhatsApp.' : 'Pay securely with Visa, Mastercard or Amex through PayHere.') + '</small></span></label></div>' +
         '<div class="banks" id="bankList">' + banks.map(bankHtml).join('') + '</div></section></div>' +
         '<aside class="glass-card summary"><h2>Your order</h2>' + c.lines.map(function (l) { return lineHtml(l, false); }).join('') + summaryHtml(c) +
+        (c.ask.length ? '<p class="hint">' + esc(c.ask.map(function (l) { return l.p.name; }).join(', ')) + ' (price on request) stays in your cart. Ask us the price on WhatsApp.</p>' : '') +
         '<label class="agree"><input type="checkbox" name="agree" required> I agree to the <a href="terms.html" target="_blank">Terms &amp; Conditions</a> and <a href="privacy.html" target="_blank">Privacy Policy</a></label>' +
         '<p class="form-error hidden" role="alert"></p><button type="submit" class="btn btn-solid wide" id="place">Place order</button>' +
         '<p class="hint">Need help? WhatsApp <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', I need help with my order.') + '</span></p></aside></form>';
@@ -216,7 +232,7 @@
           name: f.get('name'), phone: f.get('phone'), phone2: f.get('phone2'), address: f.get('address'), city: f.get('city'),
           district: f.get('district'), postal: f.get('postal'), notes: f.get('notes'), payment: f.get('payment'), agree: true,
         }).then(function (o) {
-          C.cartSet([]);
+          C.cartSet(c.ask.map(function (l) { return { slug: l.p.slug, qty: l.qty }; }));
           location.href = 'order.html?no=' + o.no + '&new=1';
         }).catch(function (e) {
           btn.disabled = false;
