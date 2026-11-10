@@ -111,7 +111,8 @@
         (c.lines.length ? '<div class="glass-card lines">' + c.lines.map(function (l) { return lineHtml(l, true); }).join('') + '</div>' : '') + askHtml + '</div>' +
         '<aside class="glass-card summary"><h2>Order summary</h2>' + (c.lines.length ? summaryHtml(c) + delivery() +
           '<a class="btn btn-solid wide" href="checkout.html">Proceed to checkout</a>' :
-          '<p>The gems in your cart are priced on request. Ask us on WhatsApp and we will tell you the prices.</p>' + delivery()) +
+          '<p>The gems in your cart are priced on request. Check out to send your order request, and we tell you the price and the total on WhatsApp.</p>' + delivery() +
+          '<a class="btn btn-solid wide" href="checkout.html">Proceed to checkout</a>') +
         '<a class="btn btn-white wide" href="gems.html">Continue shopping</a></aside></div>';
       $$('[data-qty]', box).forEach(function (input) {
         input.addEventListener('change', function () {
@@ -186,12 +187,12 @@
     function draw() {
       if (!me || !data) return;
       var c = cartLines(data);
-      if (!c.lines.length) {
-        box.innerHTML = c.ask.length ?
-          '<div class="note"><h3>Ask us for the prices first</h3><p>The gems in your cart are priced on request. Message us on WhatsApp and we will tell you the prices and help you buy them.</p><a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(C.waLink(askListMessage(c.ask))) + '">' + WA_SVG + 'Ask prices on WhatsApp</a> <a class="btn btn-white" href="cart.html">Back to cart</a></div>' :
-          '<div class="note"><h3>Your cart is empty</h3><p>Add a gem to your cart before you check out.</p><a class="btn btn-solid" href="gems.html">See our gems</a></div>';
+      if (!c.lines.length && !c.ask.length) {
+        box.innerHTML = '<div class="note"><h3>Your cart is empty</h3><p>Add a gem to your cart before you check out.</p><a class="btn btn-solid" href="gems.html">See our gems</a></div>';
         return;
       }
+      // Only price-on-request gems: the checkout sends an order request, and we reply with the total.
+      var request = !c.lines.length;
       var a = me.address || {};
       var banks = C.siteInfo.bankAccounts;
       box.innerHTML = delivery() + '<form class="checkout-grid" id="co" novalidate><div class="col-main">' +
@@ -209,10 +210,13 @@
         '<label class="pay-opt"><input type="radio" name="payment" value="bank" checked><span><strong>Bank transfer</strong><small>Transfer the total to one of our accounts, then upload your payment slip. We start processing your order as soon as the slip arrives.</small></span></label>' +
         '<label class="pay-opt' + (C.siteInfo.cardPayments ? '' : ' off') + '"><input type="radio" name="payment" value="card"' + (C.siteInfo.cardPayments ? '' : ' disabled') + '><span><strong>Card payment</strong><small>' + (!C.siteInfo.cardPayments ? 'Coming soon. Please pay by bank transfer for now.' : C.siteInfo.cardMode === 'link' ? 'Pay with Visa or Mastercard. After you order, we send you a secure card payment link here and on WhatsApp.' : 'Pay securely with Visa, Mastercard or Amex through PayHere.') + '</small></span></label></div>' +
         '<div class="banks" id="bankList">' + banks.map(bankHtml).join('') + '</div></section></div>' +
-        '<aside class="glass-card summary"><h2>Your order</h2>' + c.lines.map(function (l) { return lineHtml(l, false); }).join('') + summaryHtml(c) +
-        (c.ask.length ? '<p class="hint">' + esc(c.ask.map(function (l) { return l.p.name; }).join(', ')) + ' (price on request) stays in your cart. Ask us the price on WhatsApp.</p>' : '') +
+        '<aside class="glass-card summary"><h2>Your order</h2>' + c.lines.concat(c.ask).map(function (l) { return lineHtml(l, false); }).join('') +
+        (request ? requestSummaryHtml() : summaryHtml(c)) +
+        (c.ask.length ? '<p class="notice ask-info">' + (request ?
+          '<strong>These gems are priced on request.</strong> Send your order request and we will reply on WhatsApp with the price and the total. Then pay by bank transfer' + (C.siteInfo.cardPayments ? ' or card' : '') + '.' :
+          '<strong>' + esc(c.ask.map(function (l) { return l.p.name; }).join(', ')) + '</strong> is priced on request. We add it to this order note and tell you the price on WhatsApp.') + '</p>' : '') +
         '<label class="agree"><input type="checkbox" name="agree" required> I agree to the <a href="terms.html" target="_blank">Terms &amp; Conditions</a> and <a href="privacy.html" target="_blank">Privacy Policy</a></label>' +
-        '<p class="form-error hidden" role="alert"></p><button type="submit" class="btn btn-solid wide" id="place">Place order</button>' +
+        '<p class="form-error hidden" role="alert"></p><button type="submit" class="btn btn-solid wide" id="place">' + (request ? 'Send order request' : 'Place order') + '</button>' +
         '<p class="hint">Need help? WhatsApp <span class="nums">' + C.numbersHtml('Hello ' + C.BRAND + ', I need help with my order.') + '</span></p></aside></form>';
       var form = $('#co');
       $$('[name=payment]', form).forEach(function (r) { r.addEventListener('change', function () { $('#bankList').classList.toggle('hidden', form.payment.value !== 'bank'); }); });
@@ -225,12 +229,14 @@
         if (String(f.get('phone') || '').replace(/\D/g, '').length < 9) return showError(err, ERRORS.phone_required);
         if (!f.get('district')) return showError(err, ERRORS.district_required);
         if (!f.get('agree')) return showError(err, ERRORS.terms_required);
+        if (request) return sendRequest(f, c, btn);
         btn.disabled = true;
         btn.textContent = 'Placing your order...';
         shopApi('POST', '/orders', {
           items: c.lines.map(function (l) { return { slug: l.p.slug, qty: l.qty }; }),
           name: f.get('name'), phone: f.get('phone'), phone2: f.get('phone2'), address: f.get('address'), city: f.get('city'),
-          district: f.get('district'), postal: f.get('postal'), notes: f.get('notes'), payment: f.get('payment'), agree: true,
+          district: f.get('district'), postal: f.get('postal'), payment: f.get('payment'), agree: true,
+          notes: (String(f.get('notes') || '') + (c.ask.length ? '\nAlso send me the price of: ' + c.ask.map(function (l) { return l.p.name + (l.qty > 1 ? ' x' + l.qty : ''); }).join(', ') : '')).trim().slice(0, 1000),
         }).then(function (o) {
           C.cartSet(c.ask.map(function (l) { return { slug: l.p.slug, qty: l.qty }; }));
           location.href = 'order.html?no=' + o.no + '&new=1';
@@ -249,6 +255,43 @@
       C.wireWa();
     }
   };
+  function requestSummaryHtml() {
+    return '<div class="sum-rows"><span>Gems</span><span>Price on request</span>' +
+      '<span>Delivery</span><span class="notranslate">' + esc(money(C.siteInfo.deliveryFee)) + '</span>' +
+      '<strong>Total</strong><strong>We confirm on WhatsApp</strong></div>';
+  }
+  // Price-on-request order: WhatsApp opens straight away, and a copy goes to Pryme Store.
+  function sendRequest(f, c, btn) {
+    var pay = f.get('payment') === 'card' ? 'Card payment' : 'Bank transfer';
+    var msg = 'Hello ' + C.BRAND + ', I would like to order these gems. Please tell me the price and the total:\n' +
+      c.ask.map(function (l) { return '- ' + l.p.name + (l.qty > 1 ? ' (quantity ' + l.qty + ')' : '') + ': ' + new URL(C.gemUrl(l.p), location.href).href; }).join('\n') +
+      '\n\nDeliver to:\n' + f.get('name') + '\n' + f.get('address') + ', ' + f.get('city') + ', ' + f.get('district') + (f.get('postal') ? ' ' + f.get('postal') : '') + ', Sri Lanka' +
+      '\nPhone: ' + f.get('phone') + (f.get('phone2') ? ' / ' + f.get('phone2') : '') +
+      '\nPayment: ' + pay + (f.get('notes') ? '\nNote: ' + f.get('notes') : '');
+    window.open(C.waLink(msg), '_blank', 'noopener');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    shopApi('PATCH', '/me', { name: f.get('name'), phone: f.get('phone'), address: { line: f.get('address'), city: f.get('city'), district: f.get('district'), postal: f.get('postal') } }).catch(function () {});
+    var done = function () {
+      var keep = C.cartGet().filter(function (i) { return !c.ask.some(function (l) { return l.p.slug === i.slug; }); });
+      C.cartSet(keep);
+      var box = $('#checkoutBox');
+      box.innerHTML = '<div class="glass-card request-done"><span class="done-mark" aria-hidden="true">✓</span><h2>Your order request has been sent</h2>' +
+        '<p>Thank you, ' + esc(f.get('name')) + '. We will reply on WhatsApp with the price and the total, including delivery of <b class="notranslate">' + esc(money(C.siteInfo.deliveryFee)) + '</b>.</p>' +
+        '<ol class="pay-steps"><li>We send you the total on WhatsApp.</li><li>Pay by bank transfer to one of these accounts' + (C.siteInfo.cardPayments ? ', or ask us for a card payment link' : '') + '.</li><li>Send a photo of your payment slip to us on WhatsApp.</li><li>Your gems reach your door within <b>' + C.siteInfo.deliveryDays + '</b> working days.</li></ol>' +
+        '<div class="banks">' + C.siteInfo.bankAccounts.map(bankHtml).join('') + '</div>' +
+        '<div class="fast"><strong>WhatsApp did not open?</strong> Message us: <span class="nums">' + C.numbersHtml(msg) + '</span></div>' +
+        '<div class="row-btns"><a class="btn btn-wa" target="_blank" rel="noopener" href="' + esc(C.waLink(msg)) + '">' + WA_SVG + 'Open WhatsApp</a><a class="btn btn-white" href="gems.html">Continue shopping</a></div></div>';
+      wireCopy(box);
+      window.scrollTo({ top: box.getBoundingClientRect().top + window.scrollY - 120, behavior: 'smooth' });
+    };
+    var cfg = window.PRYME || {};
+    if (!cfg.api || !cfg.key) return done();
+    fetch(cfg.api + '/public/v1/' + encodeURIComponent(cfg.key) + '/contact', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: f.get('name'), contact: f.get('phone'), message: 'ORDER REQUEST (price on request)\n' + msg }),
+    }).then(done, done);
+  }
   function bankHtml(b) {
     return '<div class="bank"><div><span class="muted">Bank</span><strong>' + esc(b.bank) + '</strong></div>' +
       '<div><span class="muted">Account number</span><strong class="notranslate acc">' + esc(b.number) + '</strong><button type="button" class="link-btn" data-copy="' + esc(String(b.number).replace(/\s/g, '')) + '">Copy</button></div>' +
