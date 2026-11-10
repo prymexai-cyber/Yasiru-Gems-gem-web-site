@@ -578,3 +578,9 @@ font[style] { background: none !important; box-shadow: none !important; }
   .detail-page { padding-top: 106px; }
   .foot-grid { grid-template-columns: 1fr; }
 }
+
+/* price-on-request gems in the cart */
+.cart-main { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.ask-lines h2 { margin: 0 0 4px; }
+.ask-lines .btn-wa { margin-top: 14px; }
+.ask-note { margin: 10px 0 0; font-size: .9rem; color: var(--soft); }
