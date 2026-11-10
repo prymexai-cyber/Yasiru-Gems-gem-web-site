@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in | Ceylon Gem Lanka</title>
+<meta name="description" content="Sign in or create an account at Ceylon Gem Lanka.">
+<meta property="og:title" content="Sign in | Ceylon Gem Lanka">
+<meta property="og:description" content="Sign in or create an account at Ceylon Gem Lanka.">
+<meta property="og:type" content="website">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/bodoni-moda-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-page="login">
+<main>
+<section class="hero hero-short" data-hero="login">
+  <div class="hero-media" aria-hidden="true"></div>
+  <div class="hero-copy wrap"><div class="hero-glass">
+    <h1 class="split">Welcome</h1>
+    <p class="lead reveal-hero">Sign in to buy gems, pay and follow your orders.</p>
+  </div></div>
+</section>
+<section class="section wrap shop-section">
+  <div class="auth glass-card">
+    <p class="notice hidden" id="loginWhy">Sign in or create an account to place your order. Your cart is saved.</p>
+    <div class="auth-tabs" role="tablist"><button type="button" role="tab" data-tab="in" aria-selected="true">Sign in</button><button type="button" role="tab" data-tab="up" aria-selected="false">Create account</button></div>
+    <form id="signIn" class="form-grid" novalidate>
+      <label class="full">Email<input type="email" name="email" required autocomplete="email" autocapitalize="none"></label>
+      <label class="full">Password<input type="password" name="password" required autocomplete="current-password"></label>
+      <div class="full"><button type="submit" class="btn btn-solid wide">Sign in</button><p class="form-error hidden" role="alert"></p></div>
+      <p class="full hint">Forgot your password? Message us on WhatsApp and we will set a new one for you: <span class="nums" id="forgotNums"></span></p>
+    </form>
+    <form id="signUp" class="form-grid hidden" novalidate>
+      <label class="full">Full name<input name="name" required maxlength="80" autocomplete="name"></label>
+      <label class="full">Email<input type="email" name="email" required autocomplete="email" autocapitalize="none"></label>
+      <label class="full">WhatsApp or phone number<input name="phone" maxlength="24" inputmode="tel" autocomplete="tel" placeholder="077 123 4567"></label>
+      <label>Password<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
+      <label>Repeat password<input type="password" name="password2" required minlength="8" autocomplete="new-password"></label>
+      <div class="full"><button type="submit" class="btn btn-solid wide">Create account</button><p class="form-error hidden" role="alert"></p></div>
+      <p class="full hint">By creating an account you agree to our <a href="terms.html">Terms &amp; Conditions</a> and <a href="privacy.html">Privacy Policy</a>.</p>
+    </form>
+  </div>
+</section>
+</main>
+<script src="pryme.js" defer></script>
+<script src="assets/js/gsap.min.js" defer></script>
+<script src="assets/js/ScrollTrigger.min.js" defer></script>
+<script src="assets/js/site.js" defer></script>
+<script src="assets/js/shop.js" defer></script>
+</body>
+</html>

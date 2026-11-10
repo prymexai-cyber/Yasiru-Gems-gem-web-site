@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Track your order | Ceylon Gem Lanka</title>
+<meta name="description" content="Follow your Ceylon Gem Lanka order with your order number and phone number.">
+<meta property="og:title" content="Track your order | Ceylon Gem Lanka">
+<meta property="og:description" content="Follow your Ceylon Gem Lanka order with your order number and phone number.">
+<meta property="og:type" content="website">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/bodoni-moda-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-page="track">
+<main>
+<section class="hero hero-short" data-hero="track">
+  <div class="hero-media" aria-hidden="true"></div>
+  <div class="hero-copy wrap"><div class="hero-glass">
+    <h1 class="split">Track your order</h1>
+    <p class="lead reveal-hero">Enter your order number and the phone number you used at checkout.</p>
+  </div></div>
+</section>
+<section class="section wrap shop-section">
+  <form class="glass-card track-form" id="trackForm" novalidate>
+    <label>Order number<input name="orderNo" required inputmode="numeric" placeholder="1450"></label>
+    <label>Phone number<input name="phone" required inputmode="tel" placeholder="077 123 4567"></label>
+    <button class="btn btn-solid">Track order</button>
+    <p class="form-error hidden" role="alert"></p>
+  </form>
+  <p class="hint hidden" id="trackAccount">You are signed in. You can also see all your orders in <a href="account.html">My account</a>.</p>
+  <div id="trackOut"></div>
+</section>
+</main>
+<script src="pryme.js" defer></script>
+<script src="assets/js/gsap.min.js" defer></script>
+<script src="assets/js/ScrollTrigger.min.js" defer></script>
+<script src="assets/js/site.js" defer></script>
+<script src="assets/js/shop.js" defer></script>
+</body>
+</html>
